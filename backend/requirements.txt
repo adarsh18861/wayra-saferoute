@@ -15,3 +15,5 @@ lightgbm
 astral
 pytest
 httpx
+pyyaml
+requests

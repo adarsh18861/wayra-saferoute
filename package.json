@@ -8,8 +8,13 @@
     "dev": "concurrently -k -n backend,frontend -c magenta,cyan \"npm:dev:backend\" \"npm:dev:frontend\"",
     "dev:backend": "cd backend && .venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --port 8000",
     "dev:frontend": "npm --prefix frontend run dev",
-    "test": "npm run test:backend && npm run test:frontend",
+    "data": "npm run data:download && npm run data:clean",
+    "data:download": "backend\\.venv\\Scripts\\python.exe ml/01_download.py",
+    "data:clean": "backend\\.venv\\Scripts\\python.exe ml/02_clean.py",
+    "ml:data": "npm run data",
+    "test": "npm run test:backend && npm run test:ml && npm run test:frontend",
     "test:backend": "cd backend && .venv\\Scripts\\python.exe -m pytest -q",
+    "test:ml": "cd ml && ..\\backend\\.venv\\Scripts\\python.exe -m pytest -q",
     "test:frontend": "npm --prefix frontend run typecheck"
   },
   "devDependencies": {

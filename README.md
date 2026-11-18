@@ -4,7 +4,7 @@
 
 **Pilot: Chicago (data-available city).** See [CLAUDE.md](CLAUDE.md) for the full project spec.
 
-> Status: **Phase 0.5: auth and search UI.** Users can register and sign in (JWT). The map page needs sign-in and has a From/To search panel with Chicago-only place autocomplete, "Use my location" and map markers. "Find safe route" is a placeholder until the routing phase.
+> Status: **Phase 1: data pipeline.** Users can register and sign in (JWT). The map page needs sign-in and has a From/To search panel with Chicago-only place autocomplete, "Use my location" and map markers. `npm run data` downloads and cleans the Chicago crime data plus OSM and police-station context. "Find safe route" is a placeholder until the routing phase.
 
 ## Features so far
 
@@ -22,6 +22,7 @@
 | `JWT_EXPIRE_MINUTES` | Token lifetime (default 1440 = 24 h) |
 | `DATABASE_URL` | Defaults to SQLite `sqlite:///./wayra.db`, relative to `backend/` |
 | `NOMINATIM_USER_AGENT` | User-Agent sent to Nominatim. Add contact details before deploying publicly. |
+| `SOCRATA_APP_TOKEN` | Optional. A free [City of Chicago app token](https://data.cityofchicago.org/profile/edit/developer_settings) raises the API rate limit for `npm run data`. |
 
 ## Prerequisites (Windows)
 
@@ -73,11 +74,33 @@ Invoke-RestMethod http://localhost:5173/api/health
 
 API docs: http://localhost:8000/docs
 
+## Data pipeline
+
+```powershell
+npm run data                        # download + clean (same as npm run ml:data)
+npm run data:download               # step 1 only; skips files that already exist
+npm run data:download -- --force    # re-download everything
+npm run data:download -- --only osm # just one step: crimes | stations | osm
+npm run data:clean                  # step 2 only
+```
+
+Settings (date range, crime types, public location list, severity weights, bounding box, H3 resolution) live in [ml/config.yaml](ml/config.yaml).
+
+| Step | Output (in `data/`, gitignored) |
+|---|---|
+| [ml/01_download.py](ml/01_download.py) | `raw/crimes.csv`: City of Chicago "Crimes – 2001 to Present" (Socrata `ijzp-q8t2`) since 2022-01-01, filtered on the server to the relevant crime types and `domestic = false`. It is fetched in pages of 50,000 with retries, and an interrupted download resumes from the last finished page. |
+| | `raw/police_stations.csv`: police stations (Socrata `z8bn-74gv`) |
+| | `raw/osm_pois.parquet`: OSM shops, restaurants, cafes, bars, transit stops/stations and hospitals in the City of Chicago (as points, with a `category`). `raw/osm_lamps.parquet`: OSM `highway=street_lamp` |
+| [ml/02_clean.py](ml/02_clean.py) | `processed/incidents.parquet`: keeps theft only when it is from a person (pocket-picking, purse-snatching) and keeps only public locations. Drops rows without coordinates or outside the Chicago bounding box. Adds `severity`, `hour`, `weekday` (Mon = 0), `month`, `after_dark` (astral sunset/sunrise for Chicago) and `h3` (resolution 9). Prints a summary. |
+
+The first full run takes several minutes; most of that is the crime download and the OSM Overpass queries.
+
 ## Test
 
 ```powershell
-npm test               # backend pytest + frontend TypeScript typecheck
+npm test               # backend pytest + ml pytest + frontend TypeScript typecheck
 npm run test:backend
+npm run test:ml        # data-cleaning unit tests (no network)
 npm run test:frontend
 ```
 
@@ -86,7 +109,7 @@ npm run test:frontend
 ```
 backend/    FastAPI app (app/), pytest tests (tests/), requirements.txt, .venv (gitignored)
 frontend/   React + Vite + TypeScript + Tailwind + React-Leaflet
-ml/         data and ML pipeline scripts (added in later phases)
+ml/         data pipeline (config.yaml, 01_download.py, 02_clean.py, tests/); model steps come in later phases
 data/       downloaded and processed data (gitignored)
 scripts/    PowerShell helper scripts
 ```

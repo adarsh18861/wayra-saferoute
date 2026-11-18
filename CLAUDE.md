@@ -100,7 +100,7 @@ Build one phase at a time, in this order. Each phase ends with tests, a README u
 |---|---|---|
 | 0 | Scaffold: FastAPI health check, React/Vite/Tailwind map of Chicago, npm + PowerShell scripts | ✅ done |
 | **0.5** | **Auth + search UI** (moved earlier on purpose): SQLite/SQLAlchemy `User`, `POST /api/auth/register`, `POST /api/auth/login` (JWT), `GET /api/auth/me`; Login/Register pages; the map page needs sign-in; header shows the user's name and a logout button. The map has a From/To search panel with Nominatim autocomplete limited to the City of Chicago (backend proxy `GET /api/geocode/search` with an identifying User-Agent, debounced, 1 req/s), "Use my location", markers, and a placeholder "Find safe route" button (feature 15) | ✅ done |
-| 1 | Data pipeline: `ml/01_download.py`, `02_clean.py`, `config.yaml`, `npm run ml:data` | |
+| 1 | Data pipeline: `ml/01_download.py`, `02_clean.py`, `config.yaml`, `npm run data` (alias `ml:data`) | ✅ done |
 | 2 | Features + LightGBM risk model + metrics report (`03_features.py`, `04_train.py`) | |
 | 3 | Walk graph, edge risk scoring, `POST /api/route` with Fastest/Balanced/Safest; wire up "Find safe route" (features 1–3) | |
 | 4 | Night-safe mode, risk heatmap with time slider, Model card page (features 4, 6) | |

@@ -1,0 +1,114 @@
+# WAYRA – SafeRoute data pipeline configuration (Phase 1).
+# Used by ml/01_download.py and ml/02_clean.py.
+
+city:
+  name: Chicago
+  osm_place: "Chicago, Illinois, USA"
+  timezone: America/Chicago
+  latitude: 41.8781
+  longitude: -87.6298
+  # Rows outside this box are dropped as bad geocodes. Covers the city incl. O'Hare.
+  bbox:
+    min_lat: 41.64
+    max_lat: 42.03
+    min_lon: -87.95
+    max_lon: -87.52
+
+h3_resolution: 9
+
+crimes:
+  dataset: ijzp-q8t2                     # City of Chicago "Crimes - 2001 to Present"
+  base_url: https://data.cityofchicago.org/resource
+  start_date: "2022-01-01"               # inclusive
+  end_date: null                         # exclusive, YYYY-MM-DD; null = up to the latest record
+  page_size: 50000
+  columns: [id, date, primary_type, description, location_description, domestic, arrest,
+            latitude, longitude, community_area, district]
+
+  # Street-safety relevant primary types (filtered server-side together with domestic = false).
+  primary_types:
+    - ASSAULT
+    - BATTERY
+    - ROBBERY
+    - CRIMINAL SEXUAL ASSAULT
+    - CRIM SEXUAL ASSAULT                # pre-2019 name of the same type
+    - SEX OFFENSE
+    - STALKING
+    - KIDNAPPING
+    - HOMICIDE
+    - INTIMIDATION
+    - WEAPONS VIOLATION
+    - PUBLIC PEACE VIOLATION
+    - THEFT                              # only the descriptions below are kept
+
+  # THEFT rows are kept only if `description` contains one of these (case-insensitive).
+  theft_descriptions_keep:
+    - FROM PERSON
+    - PURSE-SNATCHING
+    - POCKET-PICKING
+
+  # Public places only. Exact values, or shell-style patterns (`*`) matched case-insensitively.
+  public_locations:
+    - STREET
+    - SIDEWALK
+    - ALLEY
+    - GANGWAY
+    - "PARKING LOT*"                     # PARKING LOT / GARAGE (NON RESIDENTIAL), PARKING LOT
+    - "CTA*"                             # CTA TRAIN/BUS/PLATFORM/STATION/BUS STOP/PARKING LOT ...
+    - BUS STOP
+    - PARK PROPERTY
+    - FOREST PRESERVE
+    - "LAKEFRONT / WATERFRONT / RIVERBANK"
+    - RIVER BANK
+    - BRIDGE
+    - HIGHWAY / EXPRESSWAY
+    - "GAS STATION*"                     # GAS STATION, GAS STATION DRIVE/PROP.
+    - "VACANT LOT*"                      # VACANT LOT / LAND, VACANT LOT
+    - CONSTRUCTION SITE
+    - "CHA PARKING LOT*"
+    - CHA GROUNDS
+    - SCHOOL - PUBLIC GROUNDS
+    - SCHOOL - PRIVATE GROUNDS
+    - SCHOOL YARD
+    - COLLEGE / UNIVERSITY - GROUNDS
+    - OTHER RAILROAD PROPERTY / TRAIN DEPOT
+    - RAILROAD PROPERTY
+    - ATM (AUTOMATIC TELLER MACHINE)
+    - NEWSSTAND
+    - AIRPORT PARKING LOT
+    - AIRPORT EXTERIOR - NON-SECURE AREA
+
+severity:
+  default: 1                             # INTIMIDATION, PUBLIC PEACE VIOLATION, anything unlisted
+  by_type:
+    HOMICIDE: 10
+    CRIMINAL SEXUAL ASSAULT: 9
+    CRIM SEXUAL ASSAULT: 9
+    KIDNAPPING: 8
+    ROBBERY: 7
+    SEX OFFENSE: 6
+    STALKING: 5
+    WEAPONS VIOLATION: 5
+    ASSAULT: 3
+    BATTERY: 3
+    THEFT: 2                             # theft from person (only kind kept)
+  # ASSAULT/BATTERY whose description starts with AGGRAVATED get this weight instead.
+  aggravated:
+    types: [ASSAULT, BATTERY]
+    description_prefix: AGGRAVATED
+    weight: 6
+
+police_stations:
+  dataset: z8bn-74gv
+  columns: [district, district_name, address, zip, latitude, longitude]
+
+osm:
+  # Each POI gets the first matching category in this order.
+  poi_tags:
+    amenity: [hospital, restaurant, fast_food, cafe, bar, pub, nightclub]
+    shop: true
+    highway: [bus_stop]
+    railway: [station, halt, subway_entrance, tram_stop]
+    public_transport: [station, platform, stop_position]
+  lamp_tags:
+    highway: street_lamp
