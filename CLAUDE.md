@@ -39,15 +39,15 @@ wayra/
       main.py
       core/ (config, security, db)
       models/ schemas/
-      routers/ (auth, routing, risk, heatmap, contacts, sos, trips, reports, ws)
-      services/ (router_engine.py, risk_service.py, notifier.py, deviation.py, night_mode.py)
+      routers/ (auth, geocode, routing, risk, heatmap, contacts, sos, trips, reports, ws)
+      services/ (geocode.py, router_engine.py, risk_service.py, notifier.py, deviation.py, night_mode.py)
     tests/
   frontend/
     src/
-      pages/ (Home/Map, TripShare viewer, Contacts, SOS log, Login, About/Model card)
-      components/ (RouteCompare, SafetyLegend, Heatmap, SOSButton, VoiceSOS, FakeCall, NightModeBadge, ReportIncident)
+      pages/ (Home/Map, TripShare viewer, Contacts, SOS log, Login, Register, About/Model card)
+      components/ (Header, AuthLayout, SearchPanel, PlaceInput, RouteCompare, SafetyLegend, Heatmap, SOSButton, VoiceSOS, FakeCall, NightModeBadge, ReportIncident)
       hooks/ (useGeolocation, useWebSocket, useOnlineStatus)
-      lib/api.ts
+      lib/ (api.ts, auth.tsx, validation.ts)
 ```
 
 ## Data
@@ -93,7 +93,23 @@ Columns used: `date, primary_type, description, location_description, domestic, 
 - **Live updates:** user-submitted incident reports (`POST /api/reports`) temporarily raise risk on nearby edges with a decay over 2 h. An active trip re-requests its route every 60 s, and the UI shows a toast when a safer route appears.
 - Precompute edge risk for 12 time buckets as a numpy array keyed by edge index so a route request finishes in under 1 s.
 
+## Phase order
+Build one phase at a time, in this order. Each phase ends with tests, a README update and a commit.
+
+| Phase | Scope | Status |
+|---|---|---|
+| 0 | Scaffold: FastAPI health check, React/Vite/Tailwind map of Chicago, npm + PowerShell scripts | ✅ done |
+| **0.5** | **Auth + search UI** (moved earlier on purpose): SQLite/SQLAlchemy `User`, `POST /api/auth/register`, `POST /api/auth/login` (JWT), `GET /api/auth/me`; Login/Register pages; the map page needs sign-in; header shows the user's name and a logout button. The map has a From/To search panel with Nominatim autocomplete limited to the City of Chicago (backend proxy `GET /api/geocode/search` with an identifying User-Agent, debounced, 1 req/s), "Use my location", markers, and a placeholder "Find safe route" button (feature 15) | ✅ done |
+| 1 | Data pipeline: `ml/01_download.py`, `02_clean.py`, `config.yaml`, `npm run ml:data` | |
+| 2 | Features + LightGBM risk model + metrics report (`03_features.py`, `04_train.py`) | |
+| 3 | Walk graph, edge risk scoring, `POST /api/route` with Fastest/Balanced/Safest; wire up "Find safe route" (features 1–3) | |
+| 4 | Night-safe mode, risk heatmap with time slider, Model card page (features 4, 6) | |
+| 5 | Trusted contacts CRUD, `Notifier`, SOS with log and `tel:911` (features 7, 13) | |
+| 6 | Live trip sharing over WebSocket, deviation alerts, incident reports with live recalculation (features 5, 8, 9) | |
+| 7 | Voice SOS, fake call, PWA offline alerts, demo mode (features 10, 11, 12, 14) | |
+
 ## Features checklist (from the pitch deck)
+0. ✅ Auth: register / login / logout with JWT; the map page needs sign-in (Phase 0.5)
 1. Safest-route navigation with Fastest / Balanced / Safest comparison
 2. AI safety score per segment and per route
 3. Colour-coded routes (green/amber/red) with a legend
@@ -106,8 +122,9 @@ Columns used: `date, primary_type, description, location_description, domestic, 
 10. Voice-activated SOS: Web Speech API listens for the phrase "help help" or "wayra help" when enabled (Chrome; show a fallback message elsewhere)
 11. Fake call generator: a full-screen incoming-call UI with ringtone, caller name, a configurable delay, and accept/decline
 12. Offline emergency alerts: a PWA service worker caches the app shell. When `navigator.onLine` is false, SOS opens an `sms:` URI pre-filled with a Google/OSM maps link to the last known location and sends it to the trusted contacts.
-13. Trusted contacts CRUD, plus auth (register/login)
+13. Trusted contacts CRUD (auth itself moved to item 0 / Phase 0.5)
 14. **Demo mode:** simulated GPS that walks along the chosen route at a set speed, with a button to trigger a deviation. This lets the whole flow be demoed from India on Chicago data.
+15. ✅ Place search: From/To autocomplete (Nominatim, Chicago only), "Use my location", markers on the map (Phase 0.5; routing itself is Phase 3)
 
 ## Conventions
 - **Dev environment is Windows + PowerShell.** Do not rely on `make` or Docker for now; use npm scripts and PowerShell scripts (`scripts/*.ps1`).
@@ -115,7 +132,9 @@ Columns used: `date, primary_type, description, location_description, domestic, 
 - Setup: `npm install && npm run setup`. Run the app: `npm run dev` (backend on :8000 + Vite on :5173, which proxies `/api`), or `npm run dev:backend` / `npm run dev:frontend`. Tests: `npm test`.
 - ML pipeline (later phases): expose each step as an npm script that runs the `ml/` scripts with the backend venv's Python (e.g. `npm run ml:data`, `npm run ml:train`, `npm run ml:score`).
 - Docker/Makefile are deferred: add `docker-compose.yml` and a `Makefile` later only if asked; they are not part of the Windows workflow.
-- No secrets in git; keep keys in `.env` (see `.env.example`). `data/` is gitignored.
+- No secrets in git; keep keys in `.env` (see `.env.example`). `data/` is gitignored. `npm run setup` writes a random `JWT_SECRET` into a new `.env`.
+- Auth: passwords hashed with `bcrypt` (8–72 chars), JWTs via `PyJWT` (HS256, `JWT_SECRET`, `JWT_EXPIRE_MINUTES`). Protect endpoints with the `CurrentUser` dependency from `app/routers/deps.py`. The frontend keeps the token in `localStorage` and guards routes with `RequireAuth` in `App.tsx`.
+- External APIs called from the browser that need a User-Agent (e.g. Nominatim) go through a backend proxy, because browsers can't set that header.
 - Backend: type hints, pydantic schemas, pytest tests for routing cost, deviation logic and notifier. Frontend: TypeScript strict mode.
 - Mobile-first responsive UI. Brand: deep purple/teal, a calm and trustworthy tone, accessible contrast, and a large SOS button that is always visible.
 - After each phase: run the tests, update the README, and commit with a clear message.

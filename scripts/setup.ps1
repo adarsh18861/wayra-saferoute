@@ -33,7 +33,12 @@ Push-Location $root; npm install; Pop-Location
 Push-Location (Join-Path $root "frontend"); npm install; Pop-Location
 
 if (-not (Test-Path (Join-Path $root ".env"))) {
-    Copy-Item (Join-Path $root ".env.example") (Join-Path $root ".env")
-    Write-Host "Created .env from .env.example"
+    # Copy .env.example and replace the JWT_SECRET placeholder with a random 48-byte key.
+    $bytes = New-Object byte[] 48
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $secret = [Convert]::ToBase64String($bytes).Replace("+", "-").Replace("/", "_").TrimEnd("=")
+    $envText = (Get-Content (Join-Path $root ".env.example") -Raw) -replace "(?m)^JWT_SECRET=.*$", "JWT_SECRET=$secret"
+    [System.IO.File]::WriteAllText((Join-Path $root ".env"), $envText)
+    Write-Host "Created .env from .env.example (with a random JWT_SECRET)"
 }
 Write-Host "Setup complete. Run: npm run dev"

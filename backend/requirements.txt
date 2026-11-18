@@ -2,8 +2,9 @@ fastapi
 uvicorn[standard]
 sqlalchemy
 pydantic-settings
-python-jose[cryptography]
-passlib[bcrypt]
+pyjwt
+bcrypt
+email-validator
 pandas
 pyarrow
 h3
