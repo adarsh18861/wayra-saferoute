@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-purple: #3b1f6b;
+  --color-brand-purple-light: #5b3a96;
+  --color-brand-teal: #14b8a6;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}

@@ -16,15 +16,15 @@ This file is the project spec. Read it fully before any task, follow the phase y
 | Frontend | React + Vite + TypeScript, Tailwind CSS, React-Leaflet (OSM tiles), leaflet.heat, PWA (vite-plugin-pwa) |
 | Backend | Python 3.11, FastAPI, SQLAlchemy, SQLite (Postgres-ready via `DATABASE_URL`), WebSockets for live tracking/alerts, JWT auth |
 | Data/ML | pandas, pyarrow, h3, osmnx, networkx, scikit-learn, lightgbm, astral (sunset times) |
-| Infra | docker-compose (backend + frontend), `.env.example`, Makefile |
+| Infra | npm scripts (root `package.json`, `concurrently`) + PowerShell scripts, `.env.example`. docker-compose/Makefile deferred (see Conventions) |
 
 ## Repo layout
 ```
 wayra/
   CLAUDE.md
   README.md
-  docker-compose.yml
-  Makefile
+  package.json       # npm scripts: setup, dev, dev:backend, dev:frontend, test
+  scripts/           # PowerShell helpers (setup.ps1)
   .env.example
   data/              # gitignored: raw/, processed/, graph/
   ml/
@@ -110,7 +110,11 @@ Columns used: `date, primary_type, description, location_description, domestic, 
 14. **Demo mode:** simulated GPS that walks along the chosen route at a set speed, with a button to trigger a deviation. This lets the whole flow be demoed from India on Chicago data.
 
 ## Conventions
-- Run the ML pipeline with `make data && make train && make score`; run the app with `docker compose up` or `make dev`.
+- **Dev environment is Windows + PowerShell.** Do not rely on `make` or Docker for now; use npm scripts and PowerShell scripts (`scripts/*.ps1`).
+- Python is the official CPython 3.11 (not MSYS2/MinGW Python) in `backend/.venv`; npm scripts call `backend\.venv\Scripts\python.exe` directly, so no activation is needed.
+- Setup: `npm install && npm run setup`. Run the app: `npm run dev` (backend on :8000 + Vite on :5173, which proxies `/api`), or `npm run dev:backend` / `npm run dev:frontend`. Tests: `npm test`.
+- ML pipeline (later phases): expose each step as an npm script that runs the `ml/` scripts with the backend venv's Python (e.g. `npm run ml:data`, `npm run ml:train`, `npm run ml:score`).
+- Docker/Makefile are deferred: add `docker-compose.yml` and a `Makefile` later only if asked; they are not part of the Windows workflow.
 - No secrets in git; keep keys in `.env` (see `.env.example`). `data/` is gitignored.
 - Backend: type hints, pydantic schemas, pytest tests for routing cost, deviation logic and notifier. Frontend: TypeScript strict mode.
 - Mobile-first responsive UI. Brand: deep purple/teal, a calm and trustworthy tone, accessible contrast, and a large SOS button that is always visible.

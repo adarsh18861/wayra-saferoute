@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic-settings
+python-jose[cryptography]
+passlib[bcrypt]
+pandas
+pyarrow
+h3
+osmnx
+networkx
+scikit-learn
+lightgbm
+astral
+pytest
+httpx
