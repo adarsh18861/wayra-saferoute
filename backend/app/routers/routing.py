@@ -90,6 +90,24 @@ def heatmap(
     return svc.heatmap(bucket)
 
 
+@router.get("/public/model-summary")
+def public_model_summary(request: Request) -> dict[str, Any]:
+    """Headline held-out metrics only, for the public landing page (no auth, no details)."""
+    card = load_model_card(request.app.state.metrics_path)
+    if card is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Model summary unavailable (run `npm run train`)")
+    test = card.get("test", {})
+    model, base = test.get("model", {}), test.get("baseline", {})
+    split = card.get("split", {})
+    return {
+        "roc_auc": model.get("roc_auc"), "roc_auc_baseline": base.get("roc_auc"),
+        "hit_rate_top10pct": model.get("hit_rate_top10pct"),
+        "hit_rate_top10pct_baseline": base.get("hit_rate_top10pct"),
+        "pr_auc": model.get("pr_auc"), "pr_auc_baseline": base.get("pr_auc"),
+        "test_months": split.get("test"), "n_cells": card.get("n_cells"),
+    }
+
+
 @router.get("/model-card")
 def model_card(_: CurrentUser, request: Request) -> dict[str, Any]:
     """Held-out metrics of the risk model (ml/reports/metrics.json)."""

@@ -55,8 +55,8 @@ function fmt(v: number | undefined, pct?: boolean): string {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-      <h2 className="mb-3 text-lg font-semibold text-brand-purple">{title}</h2>
+    <section className="rounded-3xl bg-white p-6 shadow-[var(--shadow-card)] ring-1 ring-line">
+      <h2 className="mb-4 text-xl font-semibold text-brand-800">{title}</h2>
       {children}
     </section>
   );
@@ -80,7 +80,7 @@ function ImportanceChart({ shares }: { shares: Record<string, number> }) {
             </div>
             <div className="h-2.5 w-full rounded-r bg-slate-100">
               <div
-                className="h-full rounded-r bg-brand-purple-light transition group-hover:bg-brand-purple"
+                className="h-full rounded-r bg-gradient-to-r from-brand-600 to-brand-500 transition group-hover:from-brand-800 group-hover:to-brand-600"
                 style={{ width: `${Math.max(1, (v / max) * 100)}%` }}
               />
             </div>
@@ -126,11 +126,12 @@ export default function ModelCardPage() {
   const b = card?.test.baseline;
 
   return (
-    <div className="min-h-full bg-slate-50 pb-28">
-      <div className="bg-gradient-to-b from-brand-purple to-brand-purple-light px-4 pb-10 pt-8 text-white">
-        <div className="mx-auto max-w-3xl">
-          <p className="text-xs font-semibold uppercase tracking-widest text-brand-teal-light">Model card</p>
-          <h1 className="mt-1 text-2xl font-bold sm:text-3xl">How WAYRA scores street safety</h1>
+    <div className="min-h-full bg-canvas pb-28">
+      <div className="relative overflow-hidden bg-brand-950 px-4 pb-14 pt-10 text-white">
+        <div aria-hidden className="absolute inset-0 bg-[radial-gradient(100%_90%_at_85%_0%,#4a2d80_0%,#2a1450_45%,#170a31_85%)]" />
+        <div className="relative mx-auto max-w-3xl">
+          <p className="text-xs font-semibold uppercase tracking-widest text-brand-teal-light">AI Model card</p>
+          <h1 className="mt-2 text-3xl font-bold sm:text-4xl">How WAYRA scores street safety</h1>
           <p className="mt-2 max-w-2xl text-sm text-white/85">
             What the AI risk model learns from, how well it does on months it never saw, and where it falls short. Every
             number on this page comes from the latest training run, not from marketing material.
@@ -138,7 +139,7 @@ export default function ModelCardPage() {
         </div>
       </div>
 
-      <div className="mx-auto -mt-6 max-w-3xl space-y-4 px-4">
+      <div className="relative mx-auto -mt-8 max-w-3xl space-y-5 px-4">
         <Section title="In plain words">
           <ul className="space-y-2 text-sm leading-relaxed text-slate-700">
             <li>
@@ -260,7 +261,7 @@ export default function ModelCardPage() {
         </Section>
 
         <p className="text-center text-sm">
-          <Link to="/" className="font-semibold text-brand-teal-dark underline underline-offset-2 hover:text-brand-purple">
+          <Link to="/app" className="font-semibold text-brand-teal-dark underline underline-offset-2 hover:text-brand-purple">
             ← Back to the map
           </Link>
         </p>

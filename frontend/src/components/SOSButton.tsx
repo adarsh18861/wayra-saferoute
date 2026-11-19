@@ -19,9 +19,10 @@ export default function SOSButton() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="SOS emergency"
-        className="fixed bottom-5 right-4 z-[1200] flex h-16 w-16 items-center justify-center rounded-full bg-red-600 text-lg font-extrabold tracking-wider text-white shadow-[0_6px_20px_rgba(220,38,38,0.55)] ring-4 ring-white transition hover:bg-red-700 focus:outline-none focus-visible:ring-red-300 active:scale-95"
+        className="fixed bottom-5 right-4 z-[1200] flex h-16 w-16 font-display items-center justify-center rounded-full bg-red-600 text-lg font-extrabold tracking-wider text-white shadow-[0_6px_20px_rgba(220,38,38,0.55)] ring-4 ring-white transition hover:bg-red-700 focus:outline-none focus-visible:ring-red-300 active:scale-95"
       >
-        SOS
+        <span aria-hidden className="absolute inset-0 rounded-full bg-red-500/60 animate-pulse-ring" />
+        <span className="relative">SOS</span>
       </button>
       {open && (
         <div className="fixed inset-0 z-[1400] flex items-end justify-center bg-black/40 p-4 sm:items-center" onClick={() => setOpen(false)}>
@@ -29,7 +30,7 @@ export default function SOSButton() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="sos-title"
-            className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+            className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-[var(--shadow-lift)]"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="sos-title" className="text-lg font-bold text-red-700">

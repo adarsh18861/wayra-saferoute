@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import AuthLayout, { Field, FormError, SubmitButton } from "../components/AuthLayout";
+import { Mail, User } from "lucide-react";
+import AuthLayout, { Field, FormError, PasswordField, StrengthHint, SubmitButton } from "../components/AuthLayout";
 import { useAuth } from "../lib/auth";
 import { validateEmail, validateName, validatePassword } from "../lib/validation";
 
@@ -32,7 +33,7 @@ export default function RegisterPage() {
     setBusy(true);
     try {
       await register(name.trim(), email.trim(), password);
-      navigate("/", { replace: true });
+      navigate("/app", { replace: true });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Registration failed. Please try again.");
     } finally {
@@ -41,12 +42,14 @@ export default function RegisterPage() {
   }
 
   return (
-    <AuthLayout title="Create your account">
+    <AuthLayout title="Create your account" subtitle="Join the Chicago pilot. It takes under a minute.">
       <form onSubmit={onSubmit} noValidate>
         <FormError message={formError} />
         <Field
           id="name"
           label="Name"
+          icon={User}
+          placeholder="What should we call you?"
           autoComplete="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -55,6 +58,8 @@ export default function RegisterPage() {
         <Field
           id="email"
           label="Email"
+          icon={Mail}
+          placeholder="you@example.com"
           type="email"
           autoComplete="email"
           inputMode="email"
@@ -62,19 +67,20 @@ export default function RegisterPage() {
           onChange={(e) => setEmail(e.target.value)}
           error={errors.email}
         />
-        <Field
+        <PasswordField
           id="password"
-          label="Password (at least 8 characters)"
-          type="password"
+          label="Password"
+          placeholder="At least 8 characters"
+          hint={<StrengthHint password={password} />}
           autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           error={errors.password}
         />
-        <Field
+        <PasswordField
           id="confirm"
           label="Confirm password"
-          type="password"
+          placeholder="Type it again"
           autoComplete="new-password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
@@ -82,10 +88,10 @@ export default function RegisterPage() {
         />
         <SubmitButton busy={busy}>Create account</SubmitButton>
       </form>
-      <p className="mt-5 text-center text-sm text-slate-600">
+      <p className="mt-6 text-center text-sm text-ink-soft">
         Already have an account?{" "}
-        <Link to="/login" className="font-semibold text-brand-teal-dark hover:underline">
-          Sign in
+        <Link to="/login" className="font-semibold text-brand-700 underline-offset-4 hover:underline">
+          Log in
         </Link>
       </p>
     </AuthLayout>

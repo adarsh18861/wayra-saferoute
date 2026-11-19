@@ -93,9 +93,9 @@ export default function PlaceInput({ label, placeholder, value, onChange, action
       <label htmlFor={id} className="sr-only">
         {label}
       </label>
-      <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 focus-within:border-brand-teal focus-within:ring-2 focus-within:ring-brand-teal/30">
+      <div className="flex items-center gap-2 rounded-xl border border-line bg-white px-3 transition focus-within:border-brand-teal focus-within:ring-4 focus-within:ring-brand-teal/15">
         <span aria-hidden className={`h-3 w-3 shrink-0 rounded-full ${dotClass}`} />
-        <span className="w-10 shrink-0 text-xs font-semibold uppercase text-slate-500">{label}</span>
+        <span className="w-10 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{label}</span>
         <input
           id={id}
           role="combobox"
@@ -104,7 +104,7 @@ export default function PlaceInput({ label, placeholder, value, onChange, action
           aria-autocomplete="list"
           aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
           autoComplete="off"
-          className="min-w-0 flex-1 py-2.5 text-base text-slate-900 outline-none"
+          className="min-w-0 flex-1 bg-transparent py-2.5 text-base text-ink outline-none placeholder:text-slate-400 focus-visible:outline-none"
           placeholder={placeholder}
           value={text}
           onChange={(e) => {
@@ -137,7 +137,7 @@ export default function PlaceInput({ label, placeholder, value, onChange, action
         <ul
           id={listId}
           role="listbox"
-          className="absolute inset-x-0 top-full z-[1100] mt-1 max-h-64 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          className="absolute inset-x-0 top-full z-[1100] mt-1.5 max-h-64 overflow-auto rounded-xl border border-line bg-white p-1 shadow-[var(--shadow-lift)]"
         >
           {status === "loading" && <li className="px-3 py-2 text-sm text-slate-500">Searching…</li>}
           {status === "empty" && (
@@ -150,7 +150,7 @@ export default function PlaceInput({ label, placeholder, value, onChange, action
               id={`${listId}-${i}`}
               role="option"
               aria-selected={i === active}
-              className={`cursor-pointer px-3 py-2 text-sm text-slate-800 ${i === active ? "bg-brand-teal/15" : "hover:bg-slate-100"}`}
+              className={`cursor-pointer rounded-lg px-3 py-2 text-sm text-ink ${i === active ? "bg-brand-50" : "hover:bg-brand-50/60"}`}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => choose(p)}
             >

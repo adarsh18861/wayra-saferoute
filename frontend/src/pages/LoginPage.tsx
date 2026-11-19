@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import AuthLayout, { Field, FormError, SubmitButton } from "../components/AuthLayout";
+import { Mail } from "lucide-react";
+import AuthLayout, { Field, FormError, PasswordField, SubmitButton } from "../components/AuthLayout";
 import { useAuth } from "../lib/auth";
 import { validateEmail } from "../lib/validation";
 
@@ -29,7 +30,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await login(email.trim(), password);
-      const from = (location.state as { from?: string } | null)?.from ?? "/";
+      const from = (location.state as { from?: string } | null)?.from ?? "/app";
       navigate(from, { replace: true });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Sign-in failed. Please try again.");
@@ -39,12 +40,14 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthLayout title="Sign in">
+    <AuthLayout title="Welcome back" subtitle="Log in to plan your safest walk.">
       <form onSubmit={onSubmit} noValidate>
         <FormError message={formError} />
         <Field
           id="email"
           label="Email"
+          icon={Mail}
+          placeholder="you@example.com"
           type="email"
           autoComplete="email"
           inputMode="email"
@@ -52,20 +55,20 @@ export default function LoginPage() {
           onChange={(e) => setEmail(e.target.value)}
           error={errors.email}
         />
-        <Field
+        <PasswordField
           id="password"
           label="Password"
-          type="password"
+          placeholder="Your password"
           autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           error={errors.password}
         />
-        <SubmitButton busy={busy}>Sign in</SubmitButton>
+        <SubmitButton busy={busy}>Log in</SubmitButton>
       </form>
-      <p className="mt-5 text-center text-sm text-slate-600">
+      <p className="mt-6 text-center text-sm text-ink-soft">
         New to WAYRA?{" "}
-        <Link to="/register" className="font-semibold text-brand-teal-dark hover:underline">
+        <Link to="/register" className="font-semibold text-brand-700 underline-offset-4 hover:underline">
           Create an account
         </Link>
       </p>

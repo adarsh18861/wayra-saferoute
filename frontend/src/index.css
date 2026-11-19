@@ -1,18 +1,117 @@
 @import "tailwindcss";
 
+/*
+ * WAYRA design tokens.
+ * Purple = brand, teal = accent/action. Green / amber / red are reserved for SAFETY MEANING ONLY
+ * (route segments, heatmap, score badges) and are never used decoratively.
+ */
 @theme {
+  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* Brand purple scale */
+  --color-brand-50: #f6f3fc;
+  --color-brand-100: #ece5f8;
+  --color-brand-200: #d9ccf0;
+  --color-brand-300: #b9a2e2;
+  --color-brand-400: #9474cf;
+  --color-brand-500: #7550b8;
+  --color-brand-600: #5b3a96;
+  --color-brand-700: #4a2d80;
+  --color-brand-800: #3b1f6b;
+  --color-brand-900: #2a1450;
+  --color-brand-950: #170a31;
+  /* Legacy aliases used across the app */
   --color-brand-purple: #3b1f6b;
   --color-brand-purple-light: #5b3a96;
+
+  /* Teal accent */
   --color-brand-teal: #14b8a6;
   --color-brand-teal-light: #5eead4;
   --color-brand-teal-dark: #0f766e;
+
+  /* Neutrals */
+  --color-ink: #1b1530;
+  --color-ink-soft: #4b4563;
+  --color-canvas: #f7f5fb;
+  --color-line: #e6e0ef;
+
+  /* Safety meaning only */
+  --color-safe: #16a34a;
+  --color-caution: #f59e0b;
+  --color-danger: #dc2626;
+
+  --shadow-card: 0 1px 2px rgb(23 10 49 / 0.05), 0 8px 24px -10px rgb(23 10 49 / 0.18);
+  --shadow-lift: 0 2px 6px rgb(23 10 49 / 0.08), 0 22px 44px -16px rgb(23 10 49 / 0.32);
+  --shadow-glow: 0 0 0 1px rgb(20 184 166 / 0.25), 0 10px 40px -8px rgb(20 184 166 / 0.45);
+
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-pulse-ring: pulse-ring 2.4s ease-out infinite;
 }
 
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background: var(--color-canvas);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand-teal);
+    outline-offset: 2px;
+  }
+  [id] {
+    scroll-margin-top: 5rem;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 /* Map chrome */
@@ -20,8 +119,14 @@ body,
   font-family: inherit;
   background: #e8e4ef;
 }
+.leaflet-control-zoom {
+  border: none !important;
+  box-shadow: var(--shadow-card) !important;
+  border-radius: 0.75rem !important;
+  overflow: hidden;
+}
 .leaflet-control-zoom a {
-  color: #3b1f6b;
+  color: var(--color-brand-800) !important;
 }
 /* Phones pinch to zoom; the buttons would sit under the floating panel. */
 @media (max-width: 639px) {

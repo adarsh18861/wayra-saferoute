@@ -1,3 +1,4 @@
+import { MapPin } from "lucide-react";
 import type { Place } from "../lib/api";
 
 export type DemoTrip = { label: string; from: Place; to: Place };
@@ -25,7 +26,7 @@ export const DEMO_TRIPS: DemoTrip[] = [
 export default function DemoChips({ onPick, disabled }: { onPick: (t: DemoTrip) => void; disabled?: boolean }) {
   return (
     <div>
-      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Try a demo trip</p>
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Try a demo trip</p>
       <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
         {DEMO_TRIPS.map((t) => (
           <button
@@ -33,8 +34,9 @@ export default function DemoChips({ onPick, disabled }: { onPick: (t: DemoTrip) 
             type="button"
             disabled={disabled}
             onClick={() => onPick(t)}
-            className="shrink-0 rounded-full border border-brand-teal-dark/40 bg-brand-teal/10 px-3 py-1.5 text-xs font-medium text-brand-teal-dark transition hover:bg-brand-teal/20 disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-teal/10 px-3 py-1.5 text-xs font-semibold text-brand-teal-dark ring-1 ring-brand-teal/30 transition hover:-translate-y-px hover:bg-brand-teal/20 active:translate-y-0 disabled:opacity-50"
           >
+            <MapPin className="h-3 w-3" aria-hidden />
             {t.label}
           </button>
         ))}

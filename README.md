@@ -4,10 +4,15 @@
 
 **Pilot: Chicago (data-available city).** See [CLAUDE.md](CLAUDE.md) for the full project spec.
 
-> Status: **Phase 5: full map UI.** Sign in, search From/To (or tap a demo trip), pick a departure time and night-safe setting, and compare **Safest / Balanced / Fastest** walking routes. The selected route is drawn in green/amber/red street segments. A risk heatmap with a time slider, a Model card page with the real held-out metrics, and an always-visible SOS button (placeholder until the next phase) are in place. Behind it: the Chicago crime data pipeline (`npm run data`), a calibrated LightGBM risk model per H3 cell × 2-hour window (`npm run train`) and a risk score for every walkable street (`npm run score`).
+> Status: **Phase 5b: landing page + UI redesign** (on top of Phase 5, the full map UI). A public landing page at `/` introduces WAYRA. Sign up or log in on the split-screen auth pages, then use the map at `/app`: sign in, search From/To (or tap a demo trip), pick a departure time and night-safe setting, and compare **Safest / Balanced / Fastest** walking routes. The selected route is drawn in green/amber/red street segments. A risk heatmap with a time slider, a Model card page with the real held-out metrics, and an always-visible SOS button (placeholder until the next phase) are in place. Behind it: the Chicago crime data pipeline (`npm run data`), a calibrated LightGBM risk model per H3 cell × 2-hour window (`npm run train`) and a risk score for every walkable street (`npm run score`).
 
 ## Features so far
 
+- **Landing page (`/`, public):** sticky glass navbar with a mobile menu (Features · How it works · AI Model · Safety Tools; "Log in" + "Sign up", or "Open App" when signed in). Hero with an animated app mock (SVG city grid, red fastest vs glowing green safest path). Problem stats from the pitch research (labelled as such), feature grid with honest status tags (Live in pilot / Preview / Coming next), a 3-step "How it works", **live model metrics** as animated counters from the public `GET /api/public/model-summary`, "Who it's for", CTA band and footer.
+- **Design system:** Bricolage Grotesque (headings) + Plus Jakarta Sans (body), bundled with `@fontsource-variable` so they work offline. Purple/teal tokens in `frontend/src/index.css` (`@theme`: `brand-50…950`, `ink`, `canvas`, `line`, shadows). Green/amber/red are reserved for safety meaning. `lucide-react` icons, `motion` animations (scroll reveals, hover lifts, press states), all off under `prefers-reduced-motion`.
+- **Routes:** `/` landing · `/login`, `/register` (signed-in users go to `/app`) · `/app` map (sign-in required) · `/model` model card (sign-in required; `/model-card` redirects) · `/track/:token` placeholder for trip sharing. After login you land on `/app`, or on the page you were sent from.
+- **Auth pages:** split screen with a gradient brand panel (logo, tagline, trust points) and a form card with icons in the inputs, show/hide password, a password-strength hint on register, a submit spinner, friendly errors, links between the two pages and "← Back to home".
+- **App navbar:** logo, Map · AI Model, and an avatar menu with your name, email and Log out (which returns you to the landing page).
 - **Accounts:** register, sign in and log out (JWT). Users live in SQLite (`backend/wayra.db`, gitignored) with bcrypt-hashed passwords. The map and model card need sign-in.
 - **Search panel:** From/To with Chicago-only autocomplete (Nominatim through a backend proxy, 1 req/s, cached), "Use my location", a departure-time picker ("Now" by default, or a Chicago-time date/time), and a **Night-safe** control (Auto / On / Off). A **🌙 Night-safe mode active** badge appears automatically after Chicago sunset (from `GET /api/status`) or when switched on. Changing the time or night setting re-plans the shown route.
 - **Quick-demo chips:** "Union Station → Navy Pier", "UChicago → 63rd St Green Line" and "Wrigley Field → Lincoln Park Zoo" fill From/To and search at once.
@@ -71,7 +76,7 @@ npm run dev:backend    # FastAPI only, with auto-reload
 npm run dev:frontend   # Vite only
 ```
 
-Open http://localhost:5173. You'll see the sign-in page; create an account to reach the map. The Vite dev server proxies `/api/*` to the backend, so these should both return `{"status":"ok"}`:
+Open http://localhost:5173 to see the landing page. Create an account (Sign up) to reach the map at `/app`. The Vite dev server proxies `/api/*` to the backend, so these should both return `{"status":"ok"}`:
 
 ```powershell
 Invoke-RestMethod http://localhost:8000/api/health
@@ -154,6 +159,8 @@ POST /api/route
 
 `depart_at` is optional (default: now). A time without a zone is read as Chicago local time.
 
+`GET /api/public/model-summary` (public) returns only the headline test metrics (ROC-AUC, hit rate @ top 10%, PR-AUC, each with its baseline, plus the test months and cell count) for the landing page.
+
 `GET /api/status[?at=…]` (public) returns Chicago time, the 2-hour bucket, the auto night-mode flag with sunrise/sunset, and `routing_ready` / `heatmap_ready` / `model_card_ready`. The UI uses it for the night-safe badge and the "not ready" banner.
 
 `npm run verify:routes` runs the three demo trips at 14:00 and 23:00 on the real data (latest run, 2026-11-19, λ = 0 / 1.5 / 8):
@@ -193,7 +200,7 @@ Safest beats Fastest on every trip (+12 to +33 points, for 2–35% more walking)
 
 ```powershell
 npm test               # backend pytest + ml pytest + frontend TypeScript typecheck
-npm --prefix frontend run build   # production build
+npm --prefix frontend run build   # production build (routes are code-split: Leaflet loads only on /app)
 npm run test:backend   # auth, geocode, routing cost/safety score/night mode, /api/route on a tiny fake graph
 npm run test:ml        # data cleaning, panel/lag, edge risk, lighting fallback, relative risk, graphml parser (no network)
 npm run test:frontend

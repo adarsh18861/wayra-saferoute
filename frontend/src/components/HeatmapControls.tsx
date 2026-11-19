@@ -25,9 +25,9 @@ export default function HeatmapControls({ bucket, currentBucket, onBucket, loadi
   const next = (currentBucket + 1) % 12;
   const month = monthLabel(forecastMonth);
   return (
-    <section aria-label="Risk heatmap" className="rounded-xl bg-white/95 p-3 text-slate-800 shadow-lg backdrop-blur">
+    <section aria-label="Risk heatmap" className="rounded-2xl bg-white/95 p-3.5 text-ink shadow-[var(--shadow-lift)] ring-1 ring-line backdrop-blur-xl">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-brand-purple">Risk heatmap</h2>
+        <h2 className="text-base font-semibold text-brand-800">Risk heatmap</h2>
         <button
           type="button"
           onClick={onClose}
@@ -38,7 +38,7 @@ export default function HeatmapControls({ bucket, currentBucket, onBucket, loadi
         </button>
       </div>
       <div className="mt-1 flex items-center justify-between gap-2">
-        <label htmlFor={id} className="text-base font-bold tabular-nums text-slate-900">
+        <label htmlFor={id} className="font-display text-lg font-bold tabular-nums text-ink">
           {bucketLabel(bucket)}
           {bucket === currentBucket && <span className="ml-1.5 align-middle text-[11px] font-semibold uppercase text-brand-teal-dark">now</span>}
         </label>
@@ -64,7 +64,7 @@ export default function HeatmapControls({ bucket, currentBucket, onBucket, loadi
         value={bucket}
         onChange={(e) => onBucket(Number(e.target.value))}
         aria-valuetext={bucketLabel(bucket)}
-        className="mt-2 w-full accent-brand-purple"
+        className="mt-2 w-full accent-[#3b1f6b]"
       />
       <div aria-hidden className="flex justify-between text-[10px] text-slate-500">
         <span>12 AM</span>

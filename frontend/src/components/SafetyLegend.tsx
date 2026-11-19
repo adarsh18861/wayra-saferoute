@@ -19,7 +19,7 @@ export function SafetyScoreExplainer() {
 /** Colour key for the selected route + "What is the safety score?" explainer. */
 export default function SafetyLegend() {
   return (
-    <div className="rounded-xl bg-white/95 p-2.5 text-xs text-slate-700 shadow-lg backdrop-blur">
+    <div className="rounded-2xl bg-white/95 p-3 text-xs text-ink-soft shadow-[var(--shadow-lift)] ring-1 ring-line backdrop-blur-xl">
       <ul className="space-y-1" aria-label="Route colour legend">
         {(["green", "amber", "red"] as const).map((l) => (
           <li key={l} className="flex items-center gap-2">
@@ -32,7 +32,7 @@ export default function SafetyLegend() {
           Other routes (tap to pick)
         </li>
       </ul>
-      <div className="mt-2 border-t border-slate-200 pt-2">
+      <div className="mt-2.5 border-t border-line pt-2.5">
         <InfoTip label="What is the safety score?">
           <SafetyScoreExplainer />
         </InfoTip>

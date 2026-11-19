@@ -78,10 +78,10 @@ export default function RouteCompare({ result, selected, onSelect }: Props) {
             tabIndex={active ? 0 : -1}
             onClick={() => onSelect(r.profile)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={`group relative flex min-w-0 flex-col items-stretch gap-1.5 rounded-xl border-2 p-2 text-left transition focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-teal/40 ${
+            className={`group relative flex min-w-0 flex-col items-stretch gap-1.5 rounded-2xl border-2 p-2.5 text-left transition duration-200 active:scale-[0.98] ${
               active
-                ? "border-brand-purple bg-brand-purple/[0.06] shadow-sm"
-                : "border-slate-200 bg-white hover:border-brand-purple/40 hover:bg-slate-50"
+                ? "border-brand-700 bg-brand-50 shadow-[var(--shadow-card)]"
+                : "border-line bg-white hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-[var(--shadow-card)]"
             }`}
           >
             {r.profile === "safest" && (
@@ -89,7 +89,7 @@ export default function RouteCompare({ result, selected, onSelect }: Props) {
                 Recommended
               </span>
             )}
-            <span className={`mt-0.5 text-sm font-semibold ${active ? "text-brand-purple" : "text-slate-800"}`}>{r.label}</span>
+            <span className={`mt-0.5 font-display text-[15px] font-semibold ${active ? "text-brand-800" : "text-ink"}`}>{r.label}</span>
             <span className="flex items-center gap-1.5">
               <span
                 className={`flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full px-1 text-sm font-bold text-white ${SCORE_BADGE[lvl]}`}
@@ -98,15 +98,15 @@ export default function RouteCompare({ result, selected, onSelect }: Props) {
               >
                 {r.safety_score}
               </span>
-              <span aria-hidden className="text-[11px] leading-tight text-slate-600">
+              <span aria-hidden className="text-[11px] leading-tight text-ink-soft">
                 safety
               </span>
             </span>
-            <span className="text-xs text-slate-700">
-              <span className="font-semibold text-slate-900">{Math.round(r.eta_min)} min</span> · {km(r.distance_m)}
+            <span className="text-xs text-ink-soft">
+              <span className="font-semibold text-ink">{Math.round(r.eta_min)} min</span> <span className="whitespace-nowrap">· {km(r.distance_m)}</span>
             </span>
             <RiskBar route={r} />
-            <span className="text-[11px] leading-tight text-slate-600">
+            <span className="text-[11px] leading-tight text-ink-soft">
               {note}
             </span>
           </button>

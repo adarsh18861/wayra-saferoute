@@ -1,4 +1,5 @@
 import L from "leaflet";
+import { CircleAlert, Layers } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, ZoomControl, useMap } from "react-leaflet";
 import type { DemoTrip } from "../components/DemoChips";
@@ -246,8 +247,11 @@ export default function MapPage() {
       {/* Overlay: the container is click-through; only the panels themselves take pointer events. */}
       <div className="pointer-events-none absolute inset-0 z-[1000] flex flex-col items-stretch gap-2 p-3 sm:items-start">
         {notReady && (
-          <div role="alert" className="pointer-events-auto w-full rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow ring-1 ring-amber-200 sm:w-[25rem]">
-            <span className="font-semibold">{notReady.title}.</span> {notReady.text}
+          <div role="alert" className="pointer-events-auto flex w-full items-start gap-2 rounded-2xl bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900 shadow-[var(--shadow-card)] ring-1 ring-amber-200 sm:w-[25rem]">
+            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>
+              <span className="font-semibold">{notReady.title}.</span> {notReady.text}
+            </span>
           </div>
         )}
         <SearchPanel
@@ -302,16 +306,11 @@ export default function MapPage() {
           aria-pressed={heatOn}
           aria-label="Heatmap"
           title="Risk heatmap"
-          className={`pointer-events-auto flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-3 text-sm sm:px-3.5 font-semibold shadow-lg ring-1 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-teal/50 ${
-            heatOn ? "bg-brand-purple text-white ring-brand-purple" : "bg-white text-brand-purple ring-black/10 hover:bg-slate-50"
+          className={`pointer-events-auto flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-3 text-sm sm:px-3.5 font-semibold shadow-[var(--shadow-lift)] ring-1 transition active:scale-95 ${
+            heatOn ? "bg-brand-800 text-white ring-brand-800" : "bg-white text-brand-800 ring-line hover:-translate-y-px hover:bg-brand-50"
           }`}
         >
-          <span aria-hidden className="grid grid-cols-2 gap-[2px]">
-            <span className="h-1.5 w-1.5 rounded-[2px] bg-green-500" />
-            <span className="h-1.5 w-1.5 rounded-[2px] bg-amber-500" />
-            <span className="h-1.5 w-1.5 rounded-[2px] bg-amber-500" />
-            <span className="h-1.5 w-1.5 rounded-[2px] bg-red-600" />
-          </span>
+          <Layers className="h-[18px] w-[18px]" aria-hidden />
           <span className="hidden sm:inline">Heatmap</span>
         </button>
       </div>

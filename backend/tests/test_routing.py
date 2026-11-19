@@ -200,8 +200,12 @@ def test_heatmap_and_model_card(client: TestClient, auth_headers: dict[str, str]
         ring = fc["features"][0]["geometry"]["coordinates"][0]
         assert ring[0] == ring[-1] and len(ring) == 7
         assert client.get("/api/model-card", headers=auth_headers).json()["test"]["model"]["roc_auc"] == 0.8
+        summary = client.get("/api/public/model-summary")  # public: no auth header
+        assert summary.status_code == 200 and summary.json()["roc_auc"] == 0.8
+        assert "feature_importance_gain_share" not in summary.json()
         app.state.metrics_path = tmp_path / "missing.json"
         assert client.get("/api/model-card", headers=auth_headers).status_code == 503
+        assert client.get("/api/public/model-summary").status_code == 503
     finally:
         app.state.risk_service = None
         app.state.metrics_path = old_metrics

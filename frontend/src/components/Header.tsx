@@ -1,51 +1,123 @@
-import { NavLink } from "react-router";
+import { ChevronDown, LogOut } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { startTransition, useEffect, useId, useRef, useState } from "react";
+import { Link, NavLink, useNavigate } from "react-router";
 import { useAuth } from "../lib/auth";
+import Logo from "./ui/Logo";
 
 function navClass({ isActive }: { isActive: boolean }): string {
-  return `rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal ${
-    isActive ? "bg-white/15 text-white" : "text-white/75 hover:bg-white/10 hover:text-white"
+  return `relative rounded-lg px-3 py-2 text-sm font-semibold transition ${
+    isActive ? "bg-brand-50 text-brand-800" : "text-ink-soft hover:bg-brand-50/60 hover:text-brand-800"
   }`;
 }
 
-export default function Header() {
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
+}
+
+/** Avatar button with a small menu (name, email, Log out). */
+function UserMenu() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const itemRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+  useEffect(() => {
+    if (!open) return;
+    itemRef.current?.focus();
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  if (!user) return null;
   return (
-    <header className="relative z-[1100] flex items-center justify-between gap-2 bg-brand-purple px-3 py-2.5 text-white shadow-md sm:px-4">
-      <div className="flex min-w-0 items-center gap-2">
-        <div aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-teal font-bold text-brand-purple">
-          W
-        </div>
-        <div className="min-w-0 leading-tight">
-          <h1 className="text-base font-semibold tracking-wide sm:text-lg">
-            WAYRA <span className="hidden font-normal text-brand-teal-light sm:inline">SafeRoute</span>
-          </h1>
-          <p className="truncate text-[11px] text-brand-teal-light">
-            Pilot: Chicago<span className="hidden sm:inline"> (data-available city)</span>
-          </p>
-        </div>
-      </div>
-      <nav aria-label="Main" className="flex items-center gap-1">
-        <NavLink to="/" end className={navClass}>
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        aria-label={`Account menu for ${user.name}`}
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 transition hover:bg-brand-50"
+      >
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-800 font-display text-sm font-bold text-white ring-2 ring-white">
+          {initials(user.name)}
+        </span>
+        <span className="hidden max-w-[10rem] truncate text-sm font-semibold text-ink md:inline">{user.name}</span>
+        <ChevronDown className={`h-4 w-4 text-ink-soft transition ${open ? "rotate-180" : ""}`} aria-hidden />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            id={menuId}
+            role="menu"
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 top-full z-[1500] mt-2 w-60 origin-top-right rounded-2xl bg-white p-2 shadow-[var(--shadow-lift)] ring-1 ring-line"
+          >
+            <div className="px-3 py-2">
+              <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
+              <p className="truncate text-xs text-ink-soft">{user.email}</p>
+            </div>
+            <div className="my-1 h-px bg-line" />
+            <button
+              ref={itemRef}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                // One transition, so the route guard never sees "logged out" while still on /app
+                // (that would redirect to /login instead of home).
+                startTransition(() => {
+                  navigate("/", { replace: true });
+                  logout();
+                });
+              }}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-ink transition hover:bg-brand-50 focus-visible:bg-brand-50"
+            >
+              <LogOut className="h-4 w-4 text-ink-soft" aria-hidden /> Log out
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** App navbar: logo, Map · AI Model, avatar menu. */
+export default function Header() {
+  return (
+    <header className="relative z-[1100] flex h-16 shrink-0 items-center justify-between gap-2 border-b border-line bg-white/90 px-3 backdrop-blur-xl sm:px-5">
+      <Link to="/" aria-label="WAYRA home" className="rounded-lg">
+        <span className="sm:hidden">
+          <Logo sub="Pilot: Chicago" />
+        </span>
+        <span className="hidden sm:inline">
+          <Logo sub="Pilot: Chicago (data-available city)" />
+        </span>
+      </Link>
+      <nav aria-label="App" className="flex items-center gap-1">
+        <NavLink to="/app" end className={navClass}>
           Map
         </NavLink>
-        <NavLink to="/model-card" className={navClass}>
-          Model card
+        <NavLink to="/model" className={navClass}>
+          AI Model
         </NavLink>
       </nav>
-      {user && (
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="hidden truncate text-sm md:inline" title={user.email}>
-            Hi, <span className="font-semibold">{user.name}</span>
-          </span>
-          <button
-            type="button"
-            onClick={logout}
-            className="shrink-0 rounded-full border border-white/30 px-3 py-1 text-sm transition hover:bg-white/10"
-          >
-            Log out
-          </button>
-        </div>
-      )}
+      <UserMenu />
     </header>
   );
 }

@@ -228,3 +228,19 @@ export function friendlyError(err: unknown, what: "route" | "heatmap" | "model c
   }
   return { title: `Couldn't load the ${what}`, text: "Please try again." };
 }
+
+/** GET /api/public/model-summary: headline held-out metrics for the public landing page. */
+export type ModelSummary = {
+  roc_auc: number | null;
+  roc_auc_baseline: number | null;
+  hit_rate_top10pct: number | null;
+  hit_rate_top10pct_baseline: number | null;
+  pr_auc: number | null;
+  pr_auc_baseline: number | null;
+  test_months: string | null;
+  n_cells: number | null;
+};
+
+export function getModelSummary(): Promise<ModelSummary> {
+  return request("/api/public/model-summary");
+}
