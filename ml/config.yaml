@@ -88,7 +88,7 @@ severity:
     ROBBERY: 7
     SEX OFFENSE: 6
     STALKING: 5
-    WEAPONS VIOLATION: 5
+    WEAPONS VIOLATION: 2                 # lowered from 5: mostly police stops, not pedestrian risk
     ASSAULT: 3
     BATTERY: 3
     THEFT: 2                             # theft from person (only kind kept)
@@ -112,3 +112,29 @@ osm:
     public_transport: [station, platform, stop_position]
   lamp_tags:
     highway: street_lamp
+
+# ---------------------------------------------------------------- Phase 2: risk model
+model:
+  n_buckets: 12                          # 2-hour time buckets, bucket b = hours 2b..2b+1
+  train_end: "2025-06"                   # inclusive (YYYY-MM)
+  valid_end: "2025-12"                   # inclusive; test = everything after, up to the last complete month
+  min_history_months: 12                 # first months without a full 12-month lag window are dropped
+  night_poi_categories: [bar, pub, nightclub, restaurant, fast_food]
+  lightgbm:
+    n_estimators: 400
+    learning_rate: 0.05
+    num_leaves: 63
+    min_child_samples: 100
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    early_stopping_rounds: 30
+
+# ---------------------------------------------------------------- Phase 3: street safety scores
+edges:
+  night_buckets: [0, 1, 2, 10, 11]       # 20:00-06:00, fixed; Phase 4 night-safe mode uses real sunset times
+  lamp_radius_m: 40                      # street lamp within this distance of the edge midpoint = lit
+  unlit_night_penalty: 0.10              # added at night when no lamp nearby and no lit=yes tag
+  poi_radius_m: 100                      # POIs within this distance of the midpoint count as "busy"
+  busy_poi_cap: 10                       # this many POIs give the full reduction
+  busy_max_reduction: 0.15               # risk *= 1 - busy_max_reduction * min(1, pois / cap)

@@ -4,7 +4,7 @@
 
 **Pilot: Chicago (data-available city).** See [CLAUDE.md](CLAUDE.md) for the full project spec.
 
-> Status: **Phase 1: data pipeline.** Users can register and sign in (JWT). The map page needs sign-in and has a From/To search panel with Chicago-only place autocomplete, "Use my location" and map markers. `npm run data` downloads and cleans the Chicago crime data plus OSM and police-station context. "Find safe route" is a placeholder until the routing phase.
+> Status: **Phases 2–3: risk model + street safety scores.** Users can register and sign in (JWT). The map page needs sign-in and has a From/To search panel with Chicago-only place autocomplete, "Use my location" and map markers. `npm run data` downloads and cleans the Chicago crime data plus OSM and police-station context. `npm run train` builds a monthly panel and trains a calibrated LightGBM risk model per H3 cell × 2-hour bucket. `npm run score` turns that into a risk score for every walkable street segment in Chicago. "Find safe route" is still a placeholder until the routing API (Phase 3b).
 
 ## Features so far
 
@@ -95,12 +95,42 @@ Settings (date range, crime types, public location list, severity weights, bound
 
 The first full run takes several minutes; most of that is the crime download and the OSM Overpass queries.
 
+## Risk model and street safety scores
+
+```powershell
+npm run train    # 03_features.py + 04_train.py (~1.5 min)
+npm run score    # 05_score_edges.py; first run ~15 min (downloads + parses the walk graph), reruns <1 min
+```
+
+| Step | Output |
+|---|---|
+| [ml/03_features.py](ml/03_features.py) | `data/processed/panel.parquet`: one row per (H3 res-9 cell, month, 2-hour bucket) with lagged counts and severity sums (1/3/12 months) for the cell and its neighbours, cell totals, month-of-year and after-dark share. `cells.parquet`: per-cell street-lamp, POI and night-POI counts and distance to the nearest police station |
+| [ml/04_train.py](ml/04_train.py) | LightGBM with early stopping, isotonic calibration on the validation months. `data/models/risk_model.joblib`, `data/processed/cell_risk.parquet` (risk 0–1 per cell × 12 buckets for the next month), [ml/reports/metrics.json](ml/reports/metrics.json) and [ml/reports/feature_importance.png](ml/reports/feature_importance.png) |
+| [ml/05_score_edges.py](ml/05_score_edges.py) | `data/graph/chicago_walk.graphml` and `walk_edges.parquet` (cached), `data/processed/edge_risk.npy` (edges × 12, float32) and `edge_index.parquet` (row i = edge i: `u, v, key, length, …`) |
+
+The split is temporal: train 2023-01 to 2025-06, validate 2025-07 to 2025-12, test 2026-01 onward. Test-set results (the latest run is in [metrics.json](ml/reports/metrics.json)):
+
+| Metric | Model | Baseline (previous 12-month frequency) |
+|---|---|---|
+| ROC-AUC | 0.838 | 0.719 |
+| PR-AUC | 0.178 | 0.123 |
+| Hit rate @ top 10% of cells | 47.2% | 40.0% |
+
+The street score starts from the risk of the cell containing the edge's midpoint. At night (20:00–06:00) it adds a penalty when there is no OSM street lamp within 40 m and no `lit=yes` tag, and it is slightly lower for busier streets (POIs within 100 m). Lighting and crowd levels are **estimates from OpenStreetMap**, not live data. OSM lighting coverage in Chicago is thin (97% of edges count as unlit), so for now the night penalty is close to uniform.
+
+Latest run, 1.1 M directed edges:
+
+| Buckets | Mean | Median | p90 | p99 | ≥ 0.33 |
+|---|---|---|---|---|---|
+| Day (06:00–20:00) | 0.035 | 0.019 | 0.082 | 0.225 | 0.5% |
+| Night (20:00–06:00) | 0.130 | 0.116 | 0.174 | 0.329 | 1.0% | All parameters are in `ml/config.yaml` (`model`, `edges`).
+
 ## Test
 
 ```powershell
 npm test               # backend pytest + ml pytest + frontend TypeScript typecheck
 npm run test:backend
-npm run test:ml        # data-cleaning unit tests (no network)
+npm run test:ml        # data-cleaning, panel/lag and edge-risk unit tests (no network)
 npm run test:frontend
 ```
 
@@ -109,7 +139,7 @@ npm run test:frontend
 ```
 backend/    FastAPI app (app/), pytest tests (tests/), requirements.txt, .venv (gitignored)
 frontend/   React + Vite + TypeScript + Tailwind + React-Leaflet
-ml/         data pipeline (config.yaml, 01_download.py, 02_clean.py, tests/); model steps come in later phases
+ml/         data + model pipeline (config.yaml, 01_download … 05_score_edges, reports/, tests/)
 data/       downloaded and processed data (gitignored)
 scripts/    PowerShell helper scripts
 ```

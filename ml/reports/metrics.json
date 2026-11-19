@@ -1,0 +1,66 @@
+{
+  "unit": "H3 res-9 cell x calendar month x 2-hour bucket; target = >=1 relevant incident",
+  "split": {
+    "train": "2023-01..2025-06",
+    "valid": "2025-07..2025-12",
+    "test": "2026-01..2026-10",
+    "forecast_month": "2026-11"
+  },
+  "rows": {
+    "train": 2157840,
+    "valid": 431568,
+    "test": 719280
+  },
+  "test_positive_rate": 0.0304,
+  "n_cells": 5994,
+  "best_iteration": 92,
+  "test": {
+    "model": {
+      "roc_auc": 0.8377,
+      "pr_auc": 0.1781,
+      "hit_rate_top10pct": 0.4715,
+      "brier": 0.02698
+    },
+    "model_uncalibrated": {
+      "roc_auc": 0.8379,
+      "pr_auc": 0.1836,
+      "hit_rate_top10pct": 0.4719
+    },
+    "baseline": {
+      "roc_auc": 0.7186,
+      "pr_auc": 0.1229,
+      "hit_rate_top10pct": 0.4003
+    }
+  },
+  "definitions": {
+    "baseline": "incidents in the same cell + bucket over the previous 12 months / 12",
+    "hit_rate_top10pct": "share of test incidents in the 10% of cells ranked riskiest, ranked separately for each (month, bucket); ties broken randomly",
+    "model": "LightGBM, isotonic-calibrated on the validation months"
+  },
+  "feature_importance_gain_share": {
+    "cell_cnt_l12": 0.5247,
+    "cell_sev_l12": 0.2006,
+    "cnt_l12": 0.0758,
+    "bucket": 0.0505,
+    "nb_cell_cnt_l12": 0.0454,
+    "nb_cnt_l12": 0.0233,
+    "moy": 0.0205,
+    "pois": 0.0162,
+    "dark_share_l12": 0.0161,
+    "cell_cnt_l1": 0.0059,
+    "police_km": 0.0042,
+    "nb_sev_l12": 0.0039,
+    "sev_l12": 0.0029,
+    "nb_sev_l3": 0.0018,
+    "night_pois": 0.0016,
+    "sev_l3": 0.0012,
+    "lamps": 0.0011,
+    "cnt_l3": 0.0011,
+    "nb_sev_l1": 0.001,
+    "nb_cnt_l3": 0.0008,
+    "nb_cnt_l1": 0.0007,
+    "cnt_l1": 0.0003,
+    "sev_l1": 0.0003
+  },
+  "runtime_seconds": 50.2
+}

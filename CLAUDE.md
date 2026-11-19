@@ -31,8 +31,8 @@ wayra/
     01_download.py   # crime CSV (Socrata, filtered) + police stations + OSM POIs/lit
     02_clean.py
     03_features.py
-    04_train.py      # LightGBM + metrics report -> ml/reports/metrics.json
-    05_score_edges.py# risk per street edge per time bucket -> data/processed/edge_risk.parquet
+    04_train.py      # LightGBM + metrics report -> ml/reports/metrics.json, data/processed/cell_risk.parquet
+    05_score_edges.py# risk per street edge per time bucket -> data/processed/edge_risk.npy + edge_index.parquet
     config.yaml
   backend/
     app/
@@ -63,7 +63,7 @@ Columns used: `date, primary_type, description, location_description, domestic, 
 - Keep public `location_description` values: STREET, SIDEWALK, ALLEY, PARKING LOT*, CTA*, PARK PROPERTY, GAS STATION, VACANT LOT, BUS STOP, etc. Keep the mapping in `ml/config.yaml`.
 - Drop rows with no coordinates.
 
-**Severity weights** (configurable): homicide 10, criminal sexual assault 9, kidnapping 8, robbery 7, sex offense 6, aggravated assault/battery 6, stalking 5, weapons 5, simple assault/battery 3, theft-from-person 2, other 1.
+**Severity weights** (configurable): homicide 10, criminal sexual assault 9, kidnapping 8, robbery 7, sex offense 6, aggravated assault/battery 6, stalking 5, weapons 2 (lowered from 5 in Phase 2: weapons violations mostly reflect police stops, not risk to pedestrians), simple assault/battery 3, theft-from-person 2, other 1.
 
 **Environment proxies:**
 - Lighting: OSM `lit=yes/no` on ways, plus street-light density from OSM `highway=street_lamp`. Fall back to road class (primary/secondary roads count as better lit).
@@ -79,9 +79,19 @@ Columns used: `date, primary_type, description, location_description, domestic, 
 - Report in `ml/reports/metrics.json` and on the frontend "Model card" page: ROC-AUC, PR-AUC, and hit rate @ top 10% of hexes (share of test incidents falling in the 10% of hexes ranked riskiest), each compared with the baseline.
 - Output: `risk[hex][time_bucket]`, a 0–1 score calibrated with isotonic regression.
 
+**As built in Phase 2** (these choices override the bullets above where they differ):
+- **Monthly panel** so it fits in laptop memory: unit = (H3 res-9 cell, calendar month, 2-hour bucket 0–11), target = ≥1 incident in that cell/bucket/month. Cell universe = cells with any incident since 2022 plus their k=1 ring (~6k cells, ~3.4M rows).
+- Features: counts and severity sums for the same cell+bucket over the previous 1/3/12 months, the same summed over the k=1 ring, cell totals (all buckets), bucket, month-of-year, after-dark share of the cell's last-12-month incidents, and static per-cell environment (OSM street-lamp count, POI count, night-time POI count = bar/pub/nightclub/restaurant/fast_food, distance to the nearest police station). Weekday/7-day lags are dropped because the unit is a month.
+- Split: train 2023-01..2025-06 (2022 only feeds the 12-month lags), validate 2025-07..2025-12, test 2026-01..last complete month. The partial current month is ignored.
+- LightGBM (≤400 trees, early stopping on validation PR-AUC), no class weighting: ranking metrics don't need it and isotonic calibration (fitted on validation) fixes the probabilities. Early stopping and calibration share the validation months; the test months stay untouched.
+- Baseline = the cell+bucket incident count over the previous 12 months / 12. Hit rate @ top 10% ranks cells separately within each (month, bucket).
+- `cell_risk.parquet` = calibrated risk for the month after the last complete month (columns `h3, forecast_month, risk_00..risk_11`). Model bundle in `data/models/risk_model.joblib`.
+- Calibrated risks are real probabilities, so they are small (median ≈ 0.01, max ≈ 0.85). With the fixed 0.33/0.66 colour thresholds nearly every street is green. **Open for the routing UI:** colour by percentile or rescale for display; keep the raw probability for the cost function.
+
 ## Routing
 - Graph: OSMnx `network_type="walk"` for the City of Chicago, cached to `data/graph/chicago_walk.graphml`.
 - Edge risk rₑ,ₕ: the max-pooled risk of the hexes the edge crosses at time bucket h, adjusted by lighting (darker → higher at night) and crowd (busier → lower), clipped to [0, 1].
+  **As built (Phase 3, `ml/05_score_edges.py`):** simplified to the risk of the H3 cell containing the edge midpoint (midpoint of the two end nodes). Night buckets (fixed 0,1,2,10,11 = 20:00–06:00) add +0.10 when there is no OSM street lamp within 40 m of the midpoint and no `lit=yes`-type tag; edges with POIs within 100 m get up to 15 % lower risk (`risk *= 1 − 0.15·min(1, pois/10)`); then clip to [0, 1]. Edges in cells outside the model's cell universe get that bucket's minimum cell risk. All parameters are in `ml/config.yaml` under `edges`. Outputs: `data/processed/edge_risk.npy` (float32, edges × 12) and `edge_index.parquet` (row i ↔ edge i: `u, v, key, length, lit_tag, h3, lamp_near, poi_count`, in `G.edges(keys=True)` order of the cached graphml). OSM lighting data for Chicago is sparse: only 1.4 % of edges have a lit tag and 1.7 % have a mapped lamp within 40 m, so 97 % count as unlit and the night penalty acts almost as a flat +0.10. **Open:** add the road-class fallback from *Environment proxies* (primary/secondary = lit) if routes need a real lighting signal. The first `npm run score` downloads the graph (~3 min) and parses the 430 MB graphml (~11 min). It then caches the needed edge columns in `data/graph/walk_edges.parquet`, so reruns take under a minute. Delete that file, or pass `--force-download`, to rebuild it.
 - Edge cost:
 
   costₑ = Lₑ · (1 + λ · rₑ,ₕ)
@@ -101,8 +111,9 @@ Build one phase at a time, in this order. Each phase ends with tests, a README u
 | 0 | Scaffold: FastAPI health check, React/Vite/Tailwind map of Chicago, npm + PowerShell scripts | ✅ done |
 | **0.5** | **Auth + search UI** (moved earlier on purpose): SQLite/SQLAlchemy `User`, `POST /api/auth/register`, `POST /api/auth/login` (JWT), `GET /api/auth/me`; Login/Register pages; the map page needs sign-in; header shows the user's name and a logout button. The map has a From/To search panel with Nominatim autocomplete limited to the City of Chicago (backend proxy `GET /api/geocode/search` with an identifying User-Agent, debounced, 1 req/s), "Use my location", markers, and a placeholder "Find safe route" button (feature 15) | ✅ done |
 | 1 | Data pipeline: `ml/01_download.py`, `02_clean.py`, `config.yaml`, `npm run data` (alias `ml:data`) | ✅ done |
-| 2 | Features + LightGBM risk model + metrics report (`03_features.py`, `04_train.py`) | |
-| 3 | Walk graph, edge risk scoring, `POST /api/route` with Fastest/Balanced/Safest; wire up "Find safe route" (features 1–3) | |
+| 2 | Features + LightGBM risk model + metrics report (`03_features.py`, `04_train.py`, `npm run train`) | ✅ done |
+| 3 | Walk graph + street safety scores per edge × 12 buckets (`05_score_edges.py`, `npm run score`) | ✅ done |
+| 3b | `POST /api/route` with Fastest/Balanced/Safest on the precomputed edge risk; wire up "Find safe route" (features 1–3). Split out of Phase 3 so the ML work could land first | next |
 | 4 | Night-safe mode, risk heatmap with time slider, Model card page (features 4, 6) | |
 | 5 | Trusted contacts CRUD, `Notifier`, SOS with log and `tel:911` (features 7, 13) | |
 | 6 | Live trip sharing over WebSocket, deviation alerts, incident reports with live recalculation (features 5, 8, 9) | |
@@ -130,7 +141,7 @@ Build one phase at a time, in this order. Each phase ends with tests, a README u
 - **Dev environment is Windows + PowerShell.** Do not rely on `make` or Docker for now; use npm scripts and PowerShell scripts (`scripts/*.ps1`).
 - Python is the official CPython 3.11 (not MSYS2/MinGW Python) in `backend/.venv`; npm scripts call `backend\.venv\Scripts\python.exe` directly, so no activation is needed.
 - Setup: `npm install && npm run setup`. Run the app: `npm run dev` (backend on :8000 + Vite on :5173, which proxies `/api`), or `npm run dev:backend` / `npm run dev:frontend`. Tests: `npm test`.
-- ML pipeline (later phases): expose each step as an npm script that runs the `ml/` scripts with the backend venv's Python (e.g. `npm run ml:data`, `npm run ml:train`, `npm run ml:score`).
+- ML pipeline: each step is an npm script that runs the `ml/` scripts with the backend venv's Python: `npm run data` (alias `ml:data`), `npm run train` (features + model, alias `ml:train`, ~1.5 min), `npm run score` (walk graph + edge risk, alias `ml:score`; the first run takes ~15 min to download and parse the graph, reruns <1 min).
 - Docker/Makefile are deferred: add `docker-compose.yml` and a `Makefile` later only if asked; they are not part of the Windows workflow.
 - No secrets in git; keep keys in `.env` (see `.env.example`). `data/` is gitignored. `npm run setup` writes a random `JWT_SECRET` into a new `.env`.
 - Auth: passwords hashed with `bcrypt` (8–72 chars), JWTs via `PyJWT` (HS256, `JWT_SECRET`, `JWT_EXPIRE_MINUTES`). Protect endpoints with the `CurrentUser` dependency from `app/routers/deps.py`. The frontend keeps the token in `localStorage` and guards routes with `RequireAuth` in `App.tsx`.
