@@ -32,3 +32,10 @@ def get_db() -> Iterator[Session]:
         yield db
     finally:
         db.close()
+
+
+def get_session_factory() -> sessionmaker[Session]:
+    """Session factory for long-lived handlers (WebSockets, the live-trip ticker).
+
+    Overridden in tests together with get_db so both point at the same test database."""
+    return SessionLocal

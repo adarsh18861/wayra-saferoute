@@ -4,15 +4,15 @@
 
 **Pilot: Chicago (data-available city).** See [CLAUDE.md](CLAUDE.md) for the full project spec.
 
-> Status: **Phase 5b: landing page + UI redesign** (on top of Phase 5, the full map UI). A public landing page at `/` introduces WAYRA. Sign up or log in on the split-screen auth pages, then use the map at `/app`: sign in, search From/To (or tap a demo trip), pick a departure time and night-safe setting, and compare **Safest / Balanced / Fastest** walking routes. The selected route is drawn in green/amber/red street segments. A risk heatmap with a time slider, a Model card page with the real held-out metrics, and an always-visible SOS button (placeholder until the next phase) are in place. Behind it: the Chicago crime data pipeline (`npm run data`), a calibrated LightGBM risk model per H3 cell × 2-hour window (`npm run train`) and a risk score for every walkable street (`npm run score`).
+> Status: **Phases 6–7: safety features.** On top of safest-route navigation (Phases 3–5b), WAYRA now has trusted contacts with personal watch links, live trip sharing over WebSockets, deviation alerts (off route / stopped too long / arrived safely) with an "Are you OK?" check-in first, one-tap SOS with a 5-second cancel, an SOS log, voice SOS, a fake call, an installable PWA with an offline SMS fallback, incident reports that re-route active trips, and a **DEMO MODE** walker so the whole flow can be presented from anywhere. See [DEMO.md](DEMO.md) for the two-window demo script.
 
 ## Features so far
 
-- **Landing page (`/`, public):** sticky glass navbar with a mobile menu (Features · How it works · AI Model · Safety Tools; "Log in" + "Sign up", or "Open App" when signed in). Hero with an animated app mock (SVG city grid, red fastest vs glowing green safest path). Problem stats from the pitch research (labelled as such), feature grid with honest status tags (Live in pilot / Preview / Coming next), a 3-step "How it works", **live model metrics** as animated counters from the public `GET /api/public/model-summary`, "Who it's for", CTA band and footer.
+- **Landing page (`/`, public):** sticky glass navbar with a mobile menu (Features · How it works · AI Model · Safety Tools; "Log in" + "Sign up", or "Open App" when signed in). Hero with an animated app mock (SVG city grid, red fastest vs glowing green safest path). Problem stats from the pitch research (labelled as such), feature grid with honest status tags (all eight features are now "Live in pilot"), a 3-step "How it works", **live model metrics** as animated counters from the public `GET /api/public/model-summary`, "Who it's for", CTA band and footer.
 - **Design system:** Bricolage Grotesque (headings) + Plus Jakarta Sans (body), bundled with `@fontsource-variable` so they work offline. Purple/teal tokens in `frontend/src/index.css` (`@theme`: `brand-50…950`, `ink`, `canvas`, `line`, shadows). Green/amber/red are reserved for safety meaning. `lucide-react` icons, `motion` animations (scroll reveals, hover lifts, press states), all off under `prefers-reduced-motion`.
-- **Routes:** `/` landing · `/login`, `/register` (signed-in users go to `/app`) · `/app` map (sign-in required) · `/model` model card (sign-in required; `/model-card` redirects) · `/track/:token` placeholder for trip sharing. After login you land on `/app`, or on the page you were sent from.
+- **Routes:** `/` landing · `/login`, `/register` (signed-in users go to `/app`) · `/app` map (sign-in required) · `/model` model card (sign-in required; `/model-card` redirects) · `/contacts` trusted contacts · `/sos` SOS history · `/watch/:token` a contact's private watch page (public, token-protected) · `/track/:token` a one-off trip link (public). After login you land on `/app`, or on the page you were sent from.
 - **Auth pages:** split screen with a gradient brand panel (logo, tagline, trust points) and a form card with icons in the inputs, show/hide password, a password-strength hint on register, a submit spinner, friendly errors, links between the two pages and "← Back to home".
-- **App navbar:** logo, Map · AI Model, and an avatar menu with your name, email and Log out (which returns you to the landing page).
+- **App navbar:** logo, Map · Contacts · AI Model (icons on phones), an **Offline** badge when the browser loses its connection, a **Listening** pill while Voice SOS is on, and an avatar menu with Trusted contacts, SOS history, Fake call, the Voice SOS switch and Log out.
 - **Accounts:** register, sign in and log out (JWT). Users live in SQLite (`backend/wayra.db`, gitignored) with bcrypt-hashed passwords. The map and model card need sign-in.
 - **Search panel:** From/To with Chicago-only autocomplete (Nominatim through a backend proxy, 1 req/s, cached), "Use my location", a departure-time picker ("Now" by default, or a Chicago-time date/time), and a **Night-safe** control (Auto / On / Off). A **🌙 Night-safe mode active** badge appears automatically after Chicago sunset (from `GET /api/status`) or when switched on. Changing the time or night setting re-plans the shown route.
 - **Quick-demo chips:** "Union Station → Navy Pier", "UChicago → 63rd St Green Line" and "Wrigley Field → Lincoln Park Zoo" fill From/To and search at once.
@@ -20,7 +20,20 @@
 - **Colour-coded map:** the selected route is drawn segment by segment in green / amber / red (relative risk < 0.33 / < 0.66 / above), and the others as thin grey dotted lines. The map fits the selected route, keeping it clear of the panel. A legend and a **"What is the safety score?"** explainer sit at the bottom left.
 - **Risk heatmap:** a toggle shows the ~6k model hexagons coloured by relative risk. A slider covers the 12 two-hour windows (labelled like "10 PM–12 AM"), a **Next 2 hours** button jumps to the upcoming window, and a legend is included. Hexagons are drawn on canvas and don't capture clicks, so the map still pans.
 - **Model card page** (header nav): the data and model in plain words, the real model-vs-baseline test metrics from `GET /api/model-card`, a feature-importance chart, and the limitations.
-- **SOS button:** a large red button, always visible at the bottom right. For now it opens a dialog with a `tel:911` link; alerts to trusted contacts come in the next phase.
+
+## Safety features (Phases 6–7)
+
+**How alerts reach people without SMS accounts.** Trusted contacts are not app users. Each contact gets a personal secret **watch link** (`/watch/:token`, 128-bit token). That page needs no login and shows, live over a WebSocket: the current trip on a map (moving marker, planned route, walked trail), trip status (ETA, distance left, on/off route, "Checking in with Asha…"), and an alert feed. An SOS turns the page into a big red banner with a siren sound and a browser notification (after the contact taps **Turn on alerts**, which unlocks audio and asks for notification permission). Every alert goes through the backend `Notifier` interface: `InAppNotifier` (the watch page; delivered "live" if it's open, otherwise "queued" in its feed) is always on, and `TwilioNotifier` (SMS) / `EmailNotifier` switch on only when their env vars are set. Those two are minimal stubs that haven't been run against the live services.
+
+- **Trusted contacts (`/contacts`):** add / edit / delete (name, relation, phone, email; a phone or an email is required), up to **5**. Each card has **Copy watch link**, **WhatsApp** and **SMS** (`wa.me` / `sms:` links pre-filled with an invite and the watch link), Email, **Preview their page**, and **Reset watch link** (the old link stops working).
+- **Trips + live tracking:** **Start trip** under the route cards creates a trip and streams your location over `/api/ws/user` (real GPS via `watchPosition` every 3 s, or the demo walker every 1 s) to the contacts' watch pages. The trip panel shows ETA, distance left, progress, on/off route, **I'm safe** (a reassurance message to everyone), **End trip**, **Trip link** (copies `/track/:token` for people who aren't saved contacts), Fake call, Report and the Voice SOS switch. A trip survives page reloads and moving between pages.
+- **Deviation detection** (`backend/app/services/deviation.py`): more than **100 m off the route for over 30 s**, or **stationary (within 25 m) for over 3 min** mid-trip, starts a check-in. Your phone shows **"Are you OK? Alerting your contacts in 15 s"** (with I'm OK and Send SOS); if nobody answers, the contacts get an off-route / stopped alert. Answering snoozes that reason until the condition clears or 2 min pass. Reaching **within 40 m of the destination** sends "arrived safely" and ends the trip. GPS accuracy counts in your favour, capped at 50 m. The 15 s deadline is enforced on the server by a 1 s ticker, so it fires even if the app goes quiet.
+- **DEMO MODE:** a switch in the trip panel (and a checkbox next to Start trip, on by default) replaces GPS with a simulated walker that follows the route at **1× / 5× / 20×** (5 km/h × speed). **Simulate deviation** walks it 200 m off the route (and **Back on route**), **Simulate stop** freezes it. Demo trips use shorter timers (off route 10 s, stopped 20 s; the 15 s check-in stays) and are labelled **DEMO MODE** in the app and **Demo** on the watch page. If you start a trip with real GPS from outside Chicago (or GPS is denied), the app switches to demo mode on its own and says so.
+- **SOS:** the floating SOS button opens a full-screen **5-second countdown** with a big Cancel (Esc works too), then sends the SOS with your location to all contacts, keeps streaming your location, and shows **"Help is being alerted"** with the delivery list, a **Call 911** `tel:` link (Chicago pilot) and **I'm safe now** to resolve. It can be minimised to a red bar. WAYRA never dials anyone; the "Authorities (911)" entry in the log is marked *simulated*. **SOS history** (`/sos`) lists every SOS with time, trigger (button / voice / offline), location, duration and per-contact delivery status, plus the other messages your contacts got.
+- **Voice SOS:** switch it on in the avatar menu or the trip panel. The Web Speech API listens continuously for **"help help"** or **"WAYRA help"** (plus common mishearings of "WAYRA") and starts the SOS countdown. A "Listening" pill shows in the navbar; unsupported browsers get a clear message (works in Chrome and Edge).
+- **Fake call:** avatar menu or trip panel → pick a caller (Mom, Dad, Sister, Priya or custom) and a delay (now / 10 s / 30 s) → a full-screen incoming-call screen that looks like a phone (avatar, ringing rings, a ringtone generated with Web Audio, vibration where supported). Accept shows an in-call screen with a timer; Decline/End closes it.
+- **Offline emergency + PWA:** `vite-plugin-pwa` makes the app installable and precaches the app shell (HTML/JS/CSS/fonts/icons). If `navigator.onLine` is false when the SOS countdown ends (or the server can't be reached), the app opens an `sms:` link to all contacts' phone numbers pre-filled with **"SOS from WAYRA – my location: https://www.openstreetmap.org/?mlat=..&mlon=.."** using the last known position (kept in `localStorage`, as is the contact list).
+- **Incident reports:** **Report** (map button, or the trip panel during a trip) → category + optional note at a map point. Streets within 150 m get up to +0.6 relative risk, fading linearly to zero over 2 h, so new routes avoid them and their colours/scores reflect it. Reports show on the map as amber circles fading with age. During a trip the app re-checks every 60 s (first after 8 s): if a fresh report lies ahead on your route and a re-plan avoids it, a **"Safer route found"** card offers **Switch route**; contacts see the new route too.
 - **Friendly errors:** "outside the Chicago pilot area", "no walking route found", "still getting ready" (data not loaded: run `npm run score` / `npm run train`), "can't reach WAYRA" (backend down), and "feature not available yet" (an old backend). The app never shows a bare "Not Found". A banner appears when the server reports routing data isn't loaded.
 
 ## Configuration
@@ -33,6 +46,9 @@
 | `JWT_EXPIRE_MINUTES` | Token lifetime (default 1440 = 24 h) |
 | `DATABASE_URL` | Defaults to SQLite `sqlite:///./wayra.db`, relative to `backend/` |
 | `NOMINATIM_USER_AGENT` | User-Agent sent to Nominatim. Add contact details before deploying publicly. |
+| `PUBLIC_BASE_URL` | Web app URL used in links sent by SMS/email (default `http://localhost:5173`) |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Optional. All three set → urgent alerts (SOS, off route, stopped, arrived, I'm safe) are also sent by SMS. Untested stub. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM` | Optional. Host + sender set → the same alerts are also emailed. Untested stub. |
 | `SOCRATA_APP_TOKEN` | Optional. A free [City of Chicago app token](https://data.cityofchicago.org/profile/edit/developer_settings) raises the API rate limit for `npm run data`. |
 
 ## Prerequisites (Windows)
@@ -188,6 +204,22 @@ POST /api/route
 
 Safest beats Fastest on every trip (+12 to +33 points, for 2–35% more walking). Balanced now differs from Safest on all six runs. Scores are lower than in Phase 4 because the percentiles changed once the night penalty was removed: the Loop ranks high-risk relative to the rest of the city.
 
+## Live safety API
+
+All JSON, under `/api`. Signed-in endpoints use the bearer token; the watch/track endpoints are public and protected only by their unguessable token.
+
+| Endpoint | What it does |
+|---|---|
+| `GET/POST /contacts`, `PUT/DELETE /contacts/{id}`, `POST /contacts/{id}/reset-link` | Trusted contacts (max 5 → 409) |
+| `POST /trips` · `GET /trips/active` · `POST /trips/{id}/end` · `/safe` · `/ok` · `PATCH /trips/{id}/demo` · `POST /trips/{id}/reroute` · `POST /trips/{id}/recheck` | Trip lifecycle, "I'm safe", check-in answer (REST fallback), demo timers, switch route, 60 s safer-route check |
+| `POST /sos` · `POST /sos/{id}/resolve` · `GET /sos` · `GET /alerts` | SOS (one open at a time), resolve, history with deliveries, your recent alerts |
+| `POST /reports` · `GET /reports` | Incident reports (active ones with their current decay weight) |
+| `GET /watch/{token}` · `GET /track/{token}` | Snapshot for a contact's watch page / a trip link |
+| `WS /ws/user?token=<JWT>` | Your app: sends `{type:"loc",lat,lng,acc?,sim?}` and `{type:"ok"}`; receives `progress`, `check`, `check_cleared`, `alert`, `trip` |
+| `WS /ws/watch/{token}` · `WS /ws/track/{token}` | Viewers: `snapshot` first, then `loc`, `trip`, `check`, `check_cleared`, `alert` |
+
+Your location reaches watchers **only during a trip or an open SOS**. A contact's page shows only your first name. After a trip ends, its track link shows only that it ended.
+
 ## Using the map
 
 1. Type a From and To in Chicago, or tap a demo chip (it searches immediately).
@@ -195,13 +227,14 @@ Safest beats Fastest on every trip (+12 to +33 points, for 2–35% more walking)
 3. Compare the cards. Tap a card or a grey line on the map to switch routes; the selected route shows green/amber/red segments.
 4. **Heatmap** (button above SOS): drag the slider through the day or tap **Next 2 hours**.
 5. **Model card** in the header explains the data, metrics and limitations.
+6. **Start trip** under the route cards (leave **Demo mode** ticked when you're not in Chicago). Add people in **Contacts** first and send them their watch links. See [DEMO.md](DEMO.md) for a full walkthrough.
 
 ## Test
 
 ```powershell
 npm test               # backend pytest + ml pytest + frontend TypeScript typecheck
 npm --prefix frontend run build   # production build (routes are code-split: Leaflet loads only on /app)
-npm run test:backend   # auth, geocode, routing cost/safety score/night mode, /api/route on a tiny fake graph
+npm run test:backend   # auth, geocode, routing, contacts, trips, SOS, notifiers, deviation geometry + timers, incident boost, WebSockets
 npm run test:ml        # data cleaning, panel/lag, edge risk, lighting fallback, relative risk, graphml parser (no network)
 npm run test:frontend
 ```
@@ -217,6 +250,10 @@ scripts/    PowerShell helper scripts
 ```
 
 ## Troubleshooting
+
+- **Voice SOS doesn't react**: use Chrome or Edge, allow the microphone, and stay online (Chrome's speech recognition runs on a server). Speak the phrase clearly: "help help" or "WAYRA help".
+- **No sound or notification on the watch page**: tap **Turn on alerts** once; browsers block audio until you interact with the page.
+- **The service worker / install prompt doesn't appear in `npm run dev`**: the PWA is only generated in production builds. Use `npm --prefix frontend run build` then `npm --prefix frontend run preview` (with the backend running) to test install and offline.
 
 - **`running scripts is disabled on this system`** when activating the venv: you don't need to activate it, because the npm scripts call `backend\.venv\Scripts\python.exe` directly. If you do want to activate it, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
 - **The map says "Still getting ready" or shows a banner**: the backend started without the routing or heatmap data. Run `npm run score` (and `npm run train` if `cell_risk.parquet` is missing), then restart the backend.

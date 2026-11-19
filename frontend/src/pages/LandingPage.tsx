@@ -243,13 +243,13 @@ const NAVIGATE: Feature[] = [
   { icon: Route, title: "Safest-route navigation", text: "Compare Safest, Balanced and Fastest walks side by side, with the time cost of every safety gain.", status: "live" },
   { icon: Layers, title: "AI risk heatmap", text: "See relative street risk across Chicago for any 2-hour window, or jump to the next two hours.", status: "live" },
   { icon: Moon, title: "Night-safe mode", text: "Turns on automatically after sunset, weighting risk more and steering towards lit main roads.", status: "live" },
-  { icon: Share2, title: "Live trip sharing", text: "Share a link so trusted contacts can follow your walk in real time until you arrive.", status: "next" },
+  { icon: Share2, title: "Live trip sharing", text: "Trusted contacts follow your walk live and are alerted if you go off route, stop for too long, or arrive safely.", status: "live" },
 ];
 const TOOLS: Feature[] = [
-  { icon: Siren, title: "One-tap SOS", text: "Send your live location to trusted contacts with a 5-second cancel window and a direct 911 button.", status: "preview" },
-  { icon: Mic, title: "Voice SOS", text: "Say “WAYRA help” to trigger SOS hands-free when you can't reach your phone.", status: "next" },
-  { icon: PhoneIncoming, title: "Fake call", text: "A realistic incoming call on demand, to step out of an uncomfortable situation.", status: "next" },
-  { icon: MessageSquareWarning, title: "Offline SMS alerts", text: "No signal for data? SOS falls back to a pre-filled SMS with your last known location.", status: "next" },
+  { icon: Siren, title: "One-tap SOS", text: "Send your live location to trusted contacts with a 5-second cancel window and a direct 911 button.", status: "live" },
+  { icon: Mic, title: "Voice SOS", text: "Say “help help” or “WAYRA help” to start an SOS hands-free (Chrome and Edge).", status: "live" },
+  { icon: PhoneIncoming, title: "Fake call", text: "A realistic incoming call on demand, to step out of an uncomfortable situation.", status: "live" },
+  { icon: MessageSquareWarning, title: "Offline SMS alerts", text: "No signal for data? SOS falls back to a pre-filled SMS with your last known location.", status: "live" },
 ];
 
 const STATUS_LABEL = { live: "Live in pilot", preview: "Preview", next: "Coming next" } as const;

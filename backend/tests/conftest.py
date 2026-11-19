@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app import models  # noqa: F401  (registers tables on Base.metadata)
-from app.core.db import Base, get_db
+from app.core.db import Base, get_db, get_session_factory
 from app.main import app
 
 
@@ -28,6 +28,8 @@ def client() -> Iterator[TestClient]:
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_session_factory] = lambda: TestingSession
+    app.state.live.reset()
     try:
         yield TestClient(app)
     finally:

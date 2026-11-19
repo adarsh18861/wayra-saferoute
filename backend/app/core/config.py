@@ -24,6 +24,17 @@ class Settings(BaseSettings):
     data_dir: Path = REPO_ROOT / "data"
     metrics_path: Path = REPO_ROOT / "ml" / "reports" / "metrics.json"
     load_routing_data: bool = True
+    # Public URL of the web app, used in links sent to contacts (watch / track pages).
+    public_base_url: str = "http://localhost:5173"
+    # Optional notifiers: switched on only when these are set (see services/notifier.py).
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    email_from: str = ""
 
 
 settings = Settings()

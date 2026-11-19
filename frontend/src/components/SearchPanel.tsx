@@ -1,4 +1,4 @@
-import { ChevronDown, CircleAlert, Clock, LocateFixed, Moon, Navigation, Pencil } from "lucide-react";
+import { ChevronDown, CircleAlert, Clock, Footprints, LocateFixed, Moon, Navigation, Pencil } from "lucide-react";
 import { forwardRef, useEffect, useState } from "react";
 import { inChicago, type FriendlyError, type Place, type RouteProfile, type RouteResponse } from "../lib/api";
 import { LEVEL_LABEL } from "../lib/risk";
@@ -28,7 +28,57 @@ type Props = {
   result: RouteResponse | null;
   selected: RouteProfile;
   onSelect: (p: RouteProfile) => void;
+  onStartTrip: (demo: boolean) => Promise<void>;
 };
+
+/** "Start trip" on the selected route, with the DEMO MODE choice (simulated walker). */
+function StartTrip({ label, onStart }: { label: string; onStart: (demo: boolean) => Promise<void> }) {
+  const [demo, setDemo] = useState(() => {
+    try {
+      return localStorage.getItem("wayra.demoDefault") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <div className="rounded-2xl bg-brand-teal/8 p-3 ring-1 ring-brand-teal/25">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setErr(null);
+          try {
+            localStorage.setItem("wayra.demoDefault", demo ? "1" : "0");
+          } catch {
+            /* ignore */
+          }
+          try {
+            await onStart(demo);
+          } catch (e) {
+            setErr(e instanceof Error ? e.message : "Couldn't start the trip.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-teal font-semibold text-brand-950 shadow-[var(--shadow-glow)] transition hover:-translate-y-px hover:bg-brand-teal-light active:translate-y-0 disabled:opacity-60"
+      >
+        <Footprints className="h-5 w-5" aria-hidden />
+        {busy ? "Starting…" : `Start trip on ${label}`}
+      </button>
+      <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs text-ink-soft">
+        <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand-700" />
+        <span>
+          <span className="font-semibold text-ink">Demo mode</span>: a simulated walker follows the route (for presenting away from
+          Chicago). Turn off to use your real GPS.
+        </span>
+      </label>
+      {err && <p className="mt-2 text-xs text-red-700">{err}</p>}
+    </div>
+  );
+}
 
 function Segmented<T extends string>({
   label,
@@ -68,7 +118,7 @@ function isSmallScreen(): boolean {
 /** Floating panel: From/To, departure time, night-safe control, demo chips, and the route results. */
 const SearchPanel = forwardRef<HTMLDivElement, Props>(function SearchPanel(props, ref) {
   const { from, to, onFromChange, onToChange, departAt, onDepartAt, nightSetting, onNightSetting, nightActive, sunsetText } = props;
-  const { routing, error, onSearch, onDemo, result, selected, onSelect } = props;
+  const { routing, error, onSearch, onDemo, result, selected, onSelect, onStartTrip } = props;
   const [locating, setLocating] = useState(false);
   const [geoMsg, setGeoMsg] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(true);
@@ -279,6 +329,7 @@ const SearchPanel = forwardRef<HTMLDivElement, Props>(function SearchPanel(props
           {resultsOpen && (
             <div className="min-h-0 space-y-2.5 overflow-y-auto px-3.5 pb-3.5">
               <RouteCompare result={result} selected={selected} onSelect={onSelect} />
+              {sel && <StartTrip label={sel.label} onStart={onStartTrip} />}
               {sel && (
                 <p className="text-xs text-ink-soft">
                   <span className="font-semibold text-ink">{sel.label}:</span>{" "}

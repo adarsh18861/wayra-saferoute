@@ -1,13 +1,15 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from app.routers.deps import CurrentUser
+from app.routers.deps import CurrentUser, DbSession
 from app.schemas.routing import RouteRequest, RouteResponse
 from app.services import night_mode as nm
 from app.services.risk_service import RiskService, load_model_card
+from app.services.incidents import edge_boost
 from app.services.router_engine import NIGHT_LAMBDA_FACTOR, RouterEngine, RoutingError
+from app.services.reports_store import recent_reports
 
 router = APIRouter(tags=["routing"])
 
@@ -49,15 +51,20 @@ def map_status(request: Request, at: datetime | None = None) -> dict[str, Any]:
 def plan_route(
     body: RouteRequest,
     _: CurrentUser,
+    db: DbSession,
     engine: Annotated[RouterEngine, Depends(get_router_engine)],
 ) -> dict[str, Any]:
-    """Fastest / Balanced / Safest walking routes for the request's 2-hour risk bucket."""
+    """Fastest / Balanced / Safest walking routes for the request's 2-hour risk bucket.
+
+    Incident reports from the last 2 h raise the risk of nearby edges (decaying), whatever the
+    departure time, because they describe conditions right now."""
     local = nm.to_local(body.depart_at)
     bucket = nm.time_bucket(local)
     night, source = nm.resolve_night_mode(body.night_mode, local)
     sunrise, sunset = nm.sun_times(local)
+    boost = edge_boost(engine, recent_reports(db), datetime.now(UTC))
     try:
-        out = engine.route((body.from_.lat, body.from_.lng), (body.to.lat, body.to.lng), bucket, night)
+        out = engine.route((body.from_.lat, body.from_.lng), (body.to.lat, body.to.lng), bucket, night, boost)
     except RoutingError as exc:
         raise HTTPException(422, str(exc)) from None
     routes = [

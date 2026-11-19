@@ -1,10 +1,13 @@
 import L from "leaflet";
-import { CircleAlert, Layers } from "lucide-react";
+import { CircleAlert, Flag, Layers, LocateFixed, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, ZoomControl, useMap } from "react-leaflet";
 import type { DemoTrip } from "../components/DemoChips";
 import HeatmapControls from "../components/HeatmapControls";
 import HeatmapLayer from "../components/HeatmapLayer";
+import { FitOnce, FollowPosition, LiveMarker, MapClick, ReportMarkers, TripRouteLayer } from "../components/LiveLayers";
+import ReportIncident from "../components/ReportIncident";
+import TripBar from "../components/TripBar";
 import RouteLayer, { FitToRoute } from "../components/RouteLayer";
 import SafetyLegend from "../components/SafetyLegend";
 import SearchPanel, { type NightSetting } from "../components/SearchPanel";
@@ -13,7 +16,9 @@ import {
   getHeatmap,
   getStatus,
   inChicago,
+  listReports,
   planRoute,
+  type IncidentReport,
   type FriendlyError,
   type Heatmap,
   type MapStatus,
@@ -21,6 +26,7 @@ import {
   type RouteProfile,
   type RouteResponse,
 } from "../lib/api";
+import { useSafety } from "../lib/safety";
 import { chicagoBucket, chicagoClock } from "../lib/time";
 
 const CHICAGO_CENTER: [number, number] = [41.8781, -87.6298];
@@ -54,6 +60,13 @@ function FitToPlaces({ from, to, active }: { from: Place | null; to: Place | nul
 const nightParam = (s: NightSetting): boolean | "auto" => (s === "auto" ? "auto" : s === "on");
 
 export default function MapPage() {
+  const safety = useSafety();
+  const { trip, tripSegments, position, progress } = safety;
+  const demoMode = safety.demo;
+  const [follow, setFollow] = useState(true);
+  const [reports, setReports] = useState<IncidentReport[]>([]);
+  const [reportMode, setReportMode] = useState(false);
+  const [reportPoint, setReportPoint] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [from, setFrom] = useState<Place | null>(null);
   const [to, setTo] = useState<Place | null>(null);
   const [departAt, setDepartAt] = useState<string | null>(null);
@@ -160,6 +173,32 @@ export default function MapPage() {
     void plan(t.from, t.to);
   }
 
+  // ---- incident reports (shown on the map; they also raise nearby street risk for 2 h)
+  const loadReports = useCallback(() => {
+    listReports().then(setReports).catch(() => {});
+  }, []);
+  useEffect(() => {
+    loadReports();
+    const t = setInterval(loadReports, 60_000);
+    return () => clearInterval(t);
+  }, [loadReports]);
+
+  function reportHere() {
+    if (trip && position) {
+      setReportPoint({ lat: position.lat, lng: position.lng, label: position.sim ? "At the demo walker's position" : "At your current location" });
+    } else {
+      setReportMode(true);
+    }
+  }
+
+  // ---- trips
+  async function startTrip(demoOn: boolean) {
+    const r = result?.routes.find((x) => x.profile === selected);
+    if (!r) return;
+    await safety.startTrip(r, from, to, demoOn);
+    setFollow(true);
+  }
+
   // ---- heatmap
   useEffect(() => {
     if (!heatOn) return;
@@ -229,19 +268,48 @@ export default function MapPage() {
         />
         <ZoomControl position="topright" />
         {heatOn && heat && <HeatmapLayer data={heat} />}
-        {result && <RouteLayer result={result} selected={selected} onSelect={setSelected} />}
-        {from && (
+        {reports.length > 0 && <ReportMarkers reports={reports} />}
+        {trip ? (
+          <>
+            <TripRouteLayer geometry={trip.geometry} segments={tripSegments} />
+            <Marker position={trip.geometry[trip.geometry.length - 1]} icon={TO_ICON}>
+              <Popup>{trip.to_name || "Destination"}</Popup>
+            </Marker>
+            {position && (
+              <LiveMarker
+                lat={position.lat}
+                lng={position.lng}
+                tone={progress && !progress.onRoute ? "amber" : "teal"}
+                label={position.sim ? "DEMO" : undefined}
+                title={position.sim ? "Simulated walker (demo mode)" : "You"}
+              />
+            )}
+            <FitOnce points={trip.geometry} deps={trip.id} />
+            <FollowPosition point={position} follow={follow} onUserMove={() => setFollow(false)} />
+          </>
+        ) : (
+          result && <RouteLayer result={result} selected={selected} onSelect={setSelected} />
+        )}
+        {reportMode && (
+          <MapClick
+            onClick={(lat, lng) => {
+              setReportMode(false);
+              setReportPoint({ lat, lng, label: `At the point you picked (${lat.toFixed(4)}, ${lng.toFixed(4)})` });
+            }}
+          />
+        )}
+        {!trip && from && (
           <Marker position={[from.lat, from.lon]} icon={FROM_ICON}>
             <Popup>From: {from.name}</Popup>
           </Marker>
         )}
-        {to && (
+        {!trip && to && (
           <Marker position={[to.lat, to.lon]} icon={TO_ICON}>
             <Popup>To: {to.name}</Popup>
           </Marker>
         )}
-        <FitToPlaces from={from} to={to} active={!result && !routing} />
-        <FitToRoute route={selRoute} padding={fitPadding} />
+        <FitToPlaces from={from} to={to} active={!result && !routing && !trip} />
+        {!trip && <FitToRoute route={selRoute} padding={fitPadding} />}
       </MapContainer>
 
       {/* Overlay: the container is click-through; only the panels themselves take pointer events. */}
@@ -254,6 +322,16 @@ export default function MapPage() {
             </span>
           </div>
         )}
+        {reportMode && (
+          <div role="status" className="pointer-events-auto flex w-full items-center gap-2 rounded-2xl bg-brand-900 px-3.5 py-2.5 text-sm text-white shadow-[var(--shadow-lift)] sm:w-[25rem]">
+            <Flag className="h-4 w-4 shrink-0 text-brand-teal-light" aria-hidden />
+            <span className="flex-1">Tap the map where it happened.</span>
+            <button type="button" onClick={() => setReportMode(false)} aria-label="Cancel report" className="rounded-full p-1 hover:bg-white/15">
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
+        )}
+        {!trip && (
         <SearchPanel
           ref={panelRef}
           from={from}
@@ -273,12 +351,53 @@ export default function MapPage() {
           result={result}
           selected={selected}
           onSelect={setSelected}
+          onStartTrip={startTrip}
         />
+        )}
       </div>
 
+      {/* Active trip: bottom card on phones (above SOS), left column on desktop. */}
+      {trip && (
+        <div className="pointer-events-none absolute inset-x-3 bottom-24 z-[1000] flex max-h-[calc(100%-7rem)] flex-col overflow-y-auto sm:bottom-auto sm:left-3 sm:right-auto sm:top-3 sm:max-h-[calc(100%-1.5rem)] sm:w-[25rem]">
+          <TripBar onReport={reportHere} />
+        </div>
+      )}
+      {safety.saferRoute && (
+        <div className="pointer-events-none absolute inset-x-3 top-3 z-[1010] flex justify-center sm:left-[27rem] sm:right-3">
+          <div role="alert" className="pointer-events-auto w-full max-w-sm rounded-2xl bg-white p-3.5 shadow-[var(--shadow-lift)] ring-2 ring-brand-teal">
+            <p className="font-display text-base font-bold text-ink">Safer route found</p>
+            <p className="mt-0.5 text-sm text-ink-soft">
+              Avoids {safety.saferRoute.avoided === 1 ? "a spot reported unsafe" : `${safety.saferRoute.avoided} spots reported unsafe`} on your route ahead ·{" "}
+              {safety.saferRoute.extraMin > 0.5
+                ? `+${Math.round(safety.saferRoute.extraMin)} min`
+                : safety.saferRoute.extraMin < -0.5
+                  ? `${Math.round(-safety.saferRoute.extraMin)} min shorter`
+                  : "about the same time"}
+            </p>
+            <div className="mt-2.5 flex gap-2">
+              <button type="button" onClick={() => void safety.acceptSaferRoute()} className="flex-1 rounded-xl bg-brand-teal py-2 text-sm font-semibold text-brand-950 hover:bg-brand-teal-light">
+                Switch route
+              </button>
+              <button type="button" onClick={safety.dismissSaferRoute} className="flex-1 rounded-xl py-2 text-sm font-semibold text-brand-800 ring-1 ring-line hover:bg-brand-50">
+                Keep current
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <ReportIncident
+        point={reportPoint}
+        onClose={() => setReportPoint(null)}
+        onSaved={(r) => {
+          setReportPoint(null);
+          setReports((rs) => [r, ...rs]);
+          safety.notify({ tone: "success", title: "Thanks, report saved", text: "Nearby streets count as riskier for the next 2 hours." });
+        }}
+      />
+
       {/* Bottom-left: heatmap controls and/or route legend (kept clear of the SOS button on the right). */}
-      <div className="pointer-events-none absolute bottom-3 left-3 right-24 z-[1000] flex flex-col items-start gap-2 sm:left-[27rem] sm:right-auto sm:w-80">
-        {result && !(heatOn && window.matchMedia("(max-width: 639px)").matches) && (
+      <div className={`pointer-events-none absolute bottom-3 left-3 right-24 z-[1000] flex-col items-start gap-2 sm:left-[27rem] sm:right-auto sm:w-80 ${trip ? "hidden sm:flex" : "flex"}`}>
+        {(result || trip) && !(heatOn && window.matchMedia("(max-width: 639px)").matches) && (
           <div className="pointer-events-auto">
             <SafetyLegend />
           </div>
@@ -299,7 +418,26 @@ export default function MapPage() {
       </div>
 
       {/* Right-side map tools, stacked above the SOS button. */}
-      <div className="pointer-events-none absolute bottom-24 right-4 z-[1000] flex flex-col items-end gap-2">
+      <div className={`pointer-events-none absolute right-4 z-[1000] flex-col items-end gap-2 ${trip ? "hidden sm:flex sm:bottom-24" : "bottom-24 flex"}`}>
+        {trip && !follow && position && (
+          <button
+            type="button"
+            onClick={() => setFollow(true)}
+            className="pointer-events-auto flex h-11 items-center gap-1.5 rounded-full bg-white px-3.5 text-sm font-semibold text-brand-800 shadow-[var(--shadow-lift)] ring-1 ring-line transition hover:bg-brand-50"
+          >
+            <LocateFixed className="h-[18px] w-[18px]" aria-hidden /> {demoMode.on ? "Follow walker" : "Recenter"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={reportHere}
+          aria-label="Report unsafe spot"
+          title="Report unsafe spot"
+          className="pointer-events-auto flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full bg-white px-3 text-sm font-semibold text-brand-800 shadow-[var(--shadow-lift)] ring-1 ring-line transition hover:-translate-y-px hover:bg-brand-50 active:scale-95 sm:px-3.5"
+        >
+          <Flag className="h-[18px] w-[18px]" aria-hidden />
+          <span className="hidden sm:inline">Report</span>
+        </button>
         <button
           type="button"
           onClick={toggleHeat}

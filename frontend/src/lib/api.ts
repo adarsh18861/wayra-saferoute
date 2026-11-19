@@ -244,3 +244,133 @@ export type ModelSummary = {
 export function getModelSummary(): Promise<ModelSummary> {
   return request("/api/public/model-summary");
 }
+
+// ---- Safety (Phases 6-7): contacts, trips, SOS, alerts, watch/track, reports ----
+export type Contact = {
+  id: number;
+  name: string;
+  relation: string | null;
+  phone: string | null;
+  email: string | null;
+  watch_token: string;
+  created_at: string;
+};
+export type ContactInput = { name: string; relation: string; phone: string; email: string };
+export const MAX_CONTACTS = 5;
+
+export const listContacts = (): Promise<Contact[]> => request("/api/contacts");
+export const addContact = (c: ContactInput): Promise<Contact> =>
+  request("/api/contacts", { method: "POST", body: JSON.stringify(c) });
+export const editContact = (id: number, c: ContactInput): Promise<Contact> =>
+  request(`/api/contacts/${id}`, { method: "PUT", body: JSON.stringify(c) });
+export const resetContactLink = (id: number): Promise<Contact> =>
+  request(`/api/contacts/${id}/reset-link`, { method: "POST" });
+export async function deleteContact(id: number): Promise<void> {
+  await request(`/api/contacts/${id}`, { method: "DELETE" });
+}
+
+export type Trip = {
+  id: number;
+  share_token: string;
+  status: "active" | "ended" | "arrived";
+  profile: RouteProfile;
+  from_name: string;
+  to_name: string;
+  geometry: [number, number][];
+  distance_m: number;
+  eta_min: number;
+  safety_score: number | null;
+  demo: boolean;
+  started_at: string;
+  ended_at: string | null;
+};
+export type TripStartInput = {
+  profile: RouteProfile;
+  from_name: string;
+  to_name: string;
+  geometry: [number, number][];
+  distance_m: number;
+  eta_min: number;
+  safety_score: number;
+  demo: boolean;
+};
+export const startTripApi = (t: TripStartInput): Promise<Trip> =>
+  request("/api/trips", { method: "POST", body: JSON.stringify(t) });
+export const getActiveTrip = (): Promise<Trip | null> => request("/api/trips/active");
+export const endTripApi = (id: number): Promise<Trip> => request(`/api/trips/${id}/end`, { method: "POST" });
+export const imSafeApi = (id: number): Promise<{ ok: boolean }> => request(`/api/trips/${id}/safe`, { method: "POST" });
+export const answerCheckApi = (id: number): Promise<{ cancelled: boolean }> =>
+  request(`/api/trips/${id}/ok`, { method: "POST" });
+export const setTripDemo = (id: number, demo: boolean): Promise<Trip> =>
+  request(`/api/trips/${id}/demo`, { method: "PATCH", body: JSON.stringify({ demo }) });
+export type SaferRoute = {
+  profile: RouteProfile;
+  geometry: [number, number][];
+  distance_m: number;
+  eta_min: number;
+  safety_score: number;
+  segments: RouteSegment[];
+};
+export type RecheckResult = { safer: SaferRoute | null; reason?: string; avoided?: number; extra_min?: number };
+export const recheckTrip = (id: number, lat: number, lng: number): Promise<RecheckResult> =>
+  request(`/api/trips/${id}/recheck`, { method: "POST", body: JSON.stringify({ lat, lng }) });
+export const rerouteTrip = (id: number, r: SaferRoute): Promise<Trip> =>
+  request(`/api/trips/${id}/reroute`, {
+    method: "POST",
+    body: JSON.stringify({ profile: r.profile, geometry: r.geometry, distance_m: r.distance_m, eta_min: r.eta_min, safety_score: r.safety_score }),
+  });
+
+export type AlertKind = "sos" | "sos_resolved" | "off_route" | "stopped" | "arrived" | "safe" | "trip_started" | "trip_ended";
+export type Alert = {
+  id: number;
+  trip_id: number | null;
+  kind: AlertKind;
+  message: string;
+  source: string | null;
+  lat: number | null;
+  lng: number | null;
+  created_at: string;
+  resolved_at: string | null;
+};
+export type Delivery = { contact_name: string; channel: string; status: string; detail: string | null };
+export type SOSRecord = Alert & { deliveries: Delivery[]; duration_s: number | null };
+
+export const triggerSOS = (body: { lat?: number; lng?: number; source: "button" | "voice" | "offline" }): Promise<SOSRecord> =>
+  request("/api/sos", { method: "POST", body: JSON.stringify(body) });
+export const resolveSOS = (id: number): Promise<SOSRecord> => request(`/api/sos/${id}/resolve`, { method: "POST" });
+export const sosHistory = (): Promise<SOSRecord[]> => request("/api/sos");
+export const myAlerts = (): Promise<Alert[]> => request("/api/alerts");
+
+export type LivePoint = { lat: number; lng: number; t: string | null; sim?: boolean };
+export type LiveProgress = { remaining_m: number; off_route_m: number; on_route: boolean; eta_min: number };
+export type LiveSnapshot = {
+  kind: "watch" | "track";
+  viewer: { name: string; relation: string | null } | null;
+  user: { first_name: string };
+  trip: Trip | null;
+  sos: Alert | null;
+  last: LivePoint | null;
+  trail: [number, number][];
+  progress: LiveProgress | null;
+  alerts: Alert[];
+  channels: string[];
+};
+export const getWatch = (token: string): Promise<LiveSnapshot> => request(`/api/watch/${encodeURIComponent(token)}`);
+export const getTrack = (token: string): Promise<LiveSnapshot> => request(`/api/track/${encodeURIComponent(token)}`);
+
+export type ReportCategory = "harassment" | "poor_lighting" | "suspicious" | "unsafe_crowd" | "followed" | "other";
+export type IncidentReport = { id: number; category: ReportCategory; note: string; lat: number; lng: number; created_at: string; weight: number };
+export const listReports = (): Promise<IncidentReport[]> => request("/api/reports");
+export const addReport = (r: { category: ReportCategory; note: string; lat: number; lng: number }): Promise<IncidentReport> =>
+  request("/api/reports", { method: "POST", body: JSON.stringify(r) });
+
+/** ws(s)://host/api/... (Vite proxies /api WebSockets to the backend in dev). */
+export function wsUrl(path: string): string {
+  const proto = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${window.location.host}${path}`;
+}
+
+export const watchLink = (token: string): string => `${window.location.origin}/watch/${token}`;
+export const trackLink = (token: string): string => `${window.location.origin}/track/${token}`;
+export const osmLink = (lat: number, lng: number): string =>
+  `https://www.openstreetmap.org/?mlat=${lat.toFixed(6)}&mlon=${lng.toFixed(6)}#map=17/${lat.toFixed(6)}/${lng.toFixed(6)}`;

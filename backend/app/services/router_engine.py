@@ -97,6 +97,15 @@ class RouterEngine:
         self.lat0 = float(np.mean(self.node_lat))
         self.kx = M_PER_DEG_LAT * math.cos(math.radians(self.lat0))
         self.tree = cKDTree(np.c_[self.node_lat * M_PER_DEG_LAT, self.node_lon * self.kx])
+        self._mid_tree: cKDTree | None = None
+
+    def edge_mid_tree(self) -> tuple[cKDTree, int, float, float]:
+        """KD-tree over edge midpoints (metric coords), built on first use (incident reports)."""
+        if self._mid_tree is None:
+            mlat = (self.node_lat[self.eu] + self.node_lat[self.ev]) / 2
+            mlon = (self.node_lon[self.eu] + self.node_lon[self.ev]) / 2
+            self._mid_tree = cKDTree(np.c_[mlat * M_PER_DEG_LAT, mlon * self.kx])
+        return self._mid_tree, self.n_edges, self.kx, M_PER_DEG_LAT
 
     @property
     def n_nodes(self) -> int:
@@ -185,9 +194,12 @@ class RouterEngine:
         pos = np.searchsorted(keys_kept, a * n + b)
         return sub[keep[pos]]
 
-    def _build(self, profile: str, label: str, lam: float, edges: np.ndarray, bucket: int) -> RouteResult:
+    def _build(self, profile: str, label: str, lam: float, edges: np.ndarray, bucket: int,
+               boost: np.ndarray | None = None) -> RouteResult:
         lengths = self.length[edges].astype(np.float64)
         rel = self.rel_risk[edges, bucket].astype(np.float64)
+        if boost is not None:
+            rel = np.minimum(1.0, rel + boost[edges])
         geometry: list[list[float]] = []
         segments = []
         risk_m = {"green": 0.0, "amber": 0.0, "red": 0.0}
@@ -204,7 +216,8 @@ class RouterEngine:
 
     # ------------------------------------------------------------ public
     def route(self, from_latlon: tuple[float, float], to_latlon: tuple[float, float], bucket: int,
-              night: bool) -> dict:
+              night: bool, risk_boost: np.ndarray | None = None) -> dict:
+        """risk_boost (E,): temporary extra rel_risk from incident reports (services/incidents.py)."""
         t0 = time.perf_counter()
         s, ds = self.snap(*from_latlon)
         t, dt = self.snap(*to_latlon)
@@ -212,6 +225,8 @@ class RouterEngine:
             raise RoutingError("Start or destination is too far from the walking network (pilot area: City of Chicago).")
         sub = self._subgraph_edges(s, t, SUBGRAPH_PAD_M)
         col = self.rel_risk[:, bucket]
+        if risk_boost is not None:
+            col = np.minimum(1.0, col + risk_boost).astype(np.float32)
         results: list[RouteResult] = []
         for profile, label, lam in PROFILES:
             cost = edge_cost(self.length[sub], col[sub], lam, night, self.unlit[sub])
@@ -221,7 +236,7 @@ class RouterEngine:
                 path = self._shortest(s, t, full, edge_cost(self.length, col, lam, night, self.unlit))
             if path is None:
                 raise RoutingError("No walking route found between these points.")
-            results.append(self._build(profile, label, lam, path, bucket))
+            results.append(self._build(profile, label, lam, path, bucket, risk_boost))
         for r in results:
             r.identical_to = [o.profile for o in results if o is not r and np.array_equal(o.edges, r.edges)]
         return {

@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.db import init_db
-from app.routers import auth, geocode, health, routing
+from app.routers import auth, contacts, geocode, health, public_live, reports, routing, sos, trips, ws
+from app.services.live_service import LiveService
 from app.services.risk_service import RiskService
 from app.services.router_engine import RouterEngine
 
@@ -22,6 +23,7 @@ def load_routing_data(app: FastAPI) -> None:
     t0 = time.perf_counter()
     try:
         engine = RouterEngine.from_data_dir(settings.data_dir)
+        engine.edge_mid_tree()  # built now so the first incident-aware route request stays fast
         app.state.router_engine = engine
         logger.info("Routing graph loaded: %s nodes, %s edges in %.1fs",
                     f"{engine.n_nodes:,}", f"{engine.n_edges:,}", time.perf_counter() - t0)
@@ -50,6 +52,7 @@ app.state.router_engine = None
 app.state.router_error = None
 app.state.risk_service = None
 app.state.metrics_path = settings.metrics_path
+app.state.live = LiveService()
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,3 +66,5 @@ app.include_router(health.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(geocode.router, prefix="/api")
 app.include_router(routing.router, prefix="/api")
+for r in (contacts.router, trips.router, sos.router, reports.router, public_live.router, ws.router):
+    app.include_router(r, prefix="/api")
