@@ -152,7 +152,7 @@ def test_route_endpoint(client: TestClient, auth_headers: dict[str, str], with_e
     d = r.json()
     assert d["bucket"] == 11 and d["night_mode"] is True and d["night_mode_source"] == "auto"
     assert [x["profile"] for x in d["routes"]] == ["fastest", "balanced", "safest"]
-    assert [x["lambda"] for x in d["routes"]] == [0.0, 4.5, 12.0]
+    assert [x["lambda"] for x in d["routes"]] == [0.0, 2.25, 12.0]
     assert d["identical_routes"] is True
     fastest, safest = d["routes"][0], d["routes"][2]
     assert safest["safety_score"] > fastest["safety_score"]
@@ -165,6 +165,15 @@ def test_route_night_override(client: TestClient, auth_headers: dict[str, str], 
     d = r.json()
     assert d["night_mode"] is False and d["night_mode_source"] == "override"
     assert d["routes"][2]["lambda"] == 8.0
+
+
+def test_status_endpoint(client: TestClient, with_engine: None) -> None:
+    d = client.get("/api/status", params={"at": "2026-06-21T23:00:00"}).json()  # public, no auth
+    assert d["night_mode"] is True and d["bucket"] == 11 and d["routing_ready"] is True
+    assert d["heatmap_ready"] is False
+    d = client.get("/api/status", params={"at": "2026-06-21T14:00:00"}).json()
+    assert d["night_mode"] is False and d["bucket"] == 7
+    assert d["sunrise"].startswith("2026-06-21T05:") and d["sunset"].startswith("2026-06-21T20:")
 
 
 def test_route_outside_network(client: TestClient, auth_headers: dict[str, str], with_engine: None) -> None:

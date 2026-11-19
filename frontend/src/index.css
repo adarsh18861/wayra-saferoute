@@ -14,3 +14,21 @@ body,
   height: 100%;
   margin: 0;
 }
+
+/* Map chrome */
+.leaflet-container {
+  font-family: inherit;
+  background: #e8e4ef;
+}
+.leaflet-control-zoom a {
+  color: #3b1f6b;
+}
+/* Phones pinch to zoom; the buttons would sit under the floating panel. */
+@media (max-width: 639px) {
+  .leaflet-control-zoom {
+    display: none;
+  }
+}
+.wayra-route-hit {
+  cursor: pointer;
+}

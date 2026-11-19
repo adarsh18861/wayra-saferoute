@@ -26,7 +26,7 @@ logger = logging.getLogger("wayra.router")
 
 PROFILES: tuple[tuple[str, str, float], ...] = (
     ("fastest", "Fastest", 0.0),
-    ("balanced", "Balanced", 3.0),
+    ("balanced", "Balanced", 1.5),
     ("safest", "Safest", 8.0),
 )
 NIGHT_LAMBDA_FACTOR = 1.5

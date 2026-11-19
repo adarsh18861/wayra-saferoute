@@ -132,9 +132,9 @@ model:
 
 # ---------------------------------------------------------------- Phase 3: street safety scores
 edges:
-  night_buckets: [0, 1, 2, 10, 11]       # 20:00-06:00, fixed; Phase 4 night-safe mode uses real sunset times
+  night_buckets: [0, 1, 2, 10, 11]       # 20:00-06:00, only for the day/night share report
   lamp_radius_m: 40                      # street lamp within this distance of the edge midpoint = lit
-  unlit_night_penalty: 0.10              # added at night when no lamp nearby and no lit=yes tag
+  # no unlit_night_penalty since Phase 5: lighting only affects the router's night-safe cost
   poi_radius_m: 100                      # POIs within this distance of the midpoint count as "busy"
   busy_poi_cap: 10                       # this many POIs give the full reduction
   busy_max_reduction: 0.15               # risk *= 1 - busy_max_reduction * min(1, pois / cap)

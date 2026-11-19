@@ -4,6 +4,8 @@ import Header from "./components/Header";
 import { AuthProvider, useAuth } from "./lib/auth";
 import LoginPage from "./pages/LoginPage";
 import MapPage from "./pages/MapPage";
+import ModelCardPage from "./pages/ModelCardPage";
+import SOSButton from "./components/SOSButton";
 import RegisterPage from "./pages/RegisterPage";
 
 function FullScreenMessage({ children }: { children: ReactNode }) {
@@ -29,13 +31,13 @@ function GuestOnly({ children }: { children: ReactNode }) {
   return children;
 }
 
-function MapShell() {
+/** Signed-in layout: header, page, and the always-visible SOS button. */
+function Shell({ children, scroll = false }: { children: ReactNode; scroll?: boolean }) {
   return (
     <div className="flex h-full flex-col">
       <Header />
-      <main className="relative flex-1">
-        <MapPage />
-      </main>
+      <main className={`relative flex-1 ${scroll ? "overflow-y-auto" : "overflow-hidden"}`}>{children}</main>
+      <SOSButton />
     </div>
   );
 }
@@ -47,7 +49,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
           <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
-          <Route path="/" element={<RequireAuth><MapShell /></RequireAuth>} />
+          <Route path="/" element={<RequireAuth><Shell><MapPage /></Shell></RequireAuth>} />
+          <Route path="/model-card" element={<RequireAuth><Shell scroll><ModelCardPage /></Shell></RequireAuth>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

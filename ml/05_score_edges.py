@@ -5,9 +5,11 @@
 - Base edge risk per bucket = calibrated risk (data/processed/cell_risk.parquet) of the H3 cell
   containing the edge midpoint. Edges outside the modelled cell universe (no incident in the cell
   or its neighbours since 2022) get that bucket's minimum cell risk.
-- Adjustments (ml/config.yaml `edges`): night buckets +penalty if no street lamp within 40 m of
-  the midpoint and no lit=yes tag; busier edges (POIs within 100 m) get a small multiplicative
-  reduction; clipped to [0, 1].
+- Adjustment (ml/config.yaml `edges`): busier edges (POIs within 100 m) get a small multiplicative
+  reduction; clipped to [0, 1]. There is NO lighting penalty in the stored risk (Phase 5): OSM
+  lighting data is too sparse (92 % of edges fall back to unlit), so a flat night penalty only
+  shifted almost every street. The `unlit` flag is still saved in edge_index.parquet and the
+  backend router adds an unlit penalty inside the routing cost when night-safe mode is on.
 - Lighting: an edge counts as lit if it has a lit=yes-type tag or a mapped street lamp within
   40 m. If it has neither a lit tag (yes or no) nor a lamp, fall back to road class: trunk/primary/
   secondary/tertiary (and _link) = lit, everything else (residential, service/alley, footway,
@@ -212,14 +214,12 @@ def base_edge_risk(edge_cells: np.ndarray, cell_risk: pd.DataFrame, n_buckets: i
     return out.astype(np.float32)
 
 
-def adjust_edge_risk(base: np.ndarray, unlit: np.ndarray, poi_count: np.ndarray, ecfg: dict[str, Any]) -> np.ndarray:
-    """Apply lighting (night only) and crowd adjustments, then clip to [0, 1]. base: (E, B)."""
-    B = base.shape[1]
-    night = np.zeros(B, bool)
-    night[list(ecfg["night_buckets"])] = True
+def adjust_edge_risk(base: np.ndarray, poi_count: np.ndarray, ecfg: dict[str, Any]) -> np.ndarray:
+    """Apply the crowd adjustment, then clip to [0, 1]. base: (E, B).
+
+    No lighting term: the unlit penalty lives only in the router's night-safe cost."""
     busy = np.minimum(poi_count / float(ecfg["busy_poi_cap"]), 1.0)
     r = base * (1.0 - float(ecfg["busy_max_reduction"]) * busy)[:, None]
-    r = r + float(ecfg["unlit_night_penalty"]) * (unlit[:, None] & night[None, :])
     return np.clip(r, 0.0, 1.0).astype(np.float32)
 
 
@@ -293,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
     e["unlit"] = unlit
 
     base = base_edge_risk(e["h3"].to_numpy(), cell_risk, int(cfg["model"]["n_buckets"]))
-    risk = adjust_edge_risk(base, unlit, e["poi_count"].to_numpy(), ecfg)
+    risk = adjust_edge_risk(base, e["poi_count"].to_numpy(), ecfg)
 
     rel = relative_risk(risk)
     np.save(PROCESSED_DIR / "edge_risk.npy", risk)

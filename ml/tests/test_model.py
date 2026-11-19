@@ -115,21 +115,19 @@ def test_hit_rate_top():
 
 
 # ---------------------------------------------------------------- edge risk
-ECFG = {"night_buckets": [0, 11], "unlit_night_penalty": 0.1, "busy_poi_cap": 10, "busy_max_reduction": 0.2}
+ECFG = {"night_buckets": [0, 11], "busy_poi_cap": 10, "busy_max_reduction": 0.2}
 
 
-def test_adjust_edge_risk_night_penalty_only_for_unlit():
+def test_adjust_edge_risk_has_no_night_lighting_penalty():
+    # Lighting is only a routing-cost term in night-safe mode; stored risk is the same day and night.
     base = np.full((2, 12), 0.5, np.float32)
-    r = edges.adjust_edge_risk(base, unlit=np.array([True, False]), poi_count=np.array([0, 0]), ecfg=ECFG)
-    assert r[0, 0] == pytest.approx(0.6) and r[0, 11] == pytest.approx(0.6)
-    assert r[0, 5] == pytest.approx(0.5)  # day: no penalty
-    assert np.allclose(r[1], 0.5)  # lit edge: never penalised
+    r = edges.adjust_edge_risk(base, poi_count=np.array([0, 0]), ecfg=ECFG)
+    assert np.allclose(r, 0.5)
 
 
 def test_adjust_edge_risk_busy_reduction_and_clip():
-    base = np.array([[0.5] * 12, [0.5] * 12, [0.98] * 12], np.float32)
-    r = edges.adjust_edge_risk(base, unlit=np.array([False, False, True]), poi_count=np.array([5, 50, 0]),
-                               ecfg=ECFG)
+    base = np.array([[0.5] * 12, [0.5] * 12, [1.2] * 12], np.float32)
+    r = edges.adjust_edge_risk(base, poi_count=np.array([5, 50, 0]), ecfg=ECFG)
     assert r[0, 5] == pytest.approx(0.5 * 0.9)  # half the cap -> half the reduction
     assert r[1, 5] == pytest.approx(0.5 * 0.8)  # capped
     assert r[2, 0] == 1.0  # clipped

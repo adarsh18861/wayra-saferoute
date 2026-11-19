@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -25,6 +26,23 @@ def get_risk_service(request: Request) -> RiskService:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
                             "Heatmap is unavailable: data/processed/cell_risk.parquet not loaded (run `npm run train`)")
     return svc
+
+
+@router.get("/status")
+def map_status(request: Request, at: datetime | None = None) -> dict[str, Any]:
+    """Public map status: Chicago time, 2-hour bucket, auto night mode, and data readiness.
+
+    The frontend uses it for the night-safe badge before any route is planned and to show a
+    friendly "not ready" message instead of a raw 503."""
+    local = nm.to_local(at)
+    sunrise, sunset = nm.sun_times(local)
+    return {
+        "now": local, "bucket": nm.time_bucket(local), "night_mode": nm.is_dark(local),
+        "sunrise": sunrise, "sunset": sunset,
+        "routing_ready": getattr(request.app.state, "router_engine", None) is not None,
+        "heatmap_ready": getattr(request.app.state, "risk_service", None) is not None,
+        "model_card_ready": request.app.state.metrics_path.exists(),
+    }
 
 
 @router.post("/route", response_model=RouteResponse, response_model_by_alias=True)
