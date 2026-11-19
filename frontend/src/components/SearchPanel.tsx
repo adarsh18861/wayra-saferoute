@@ -1,16 +1,20 @@
 import { useState } from "react";
-import { inChicago, type Place } from "../lib/api";
+import { ApiError, inChicago, planRoute, type Place, type RouteResponse } from "../lib/api";
 import PlaceInput from "./PlaceInput";
+import RouteCompare from "./RouteCompare";
 
 type Props = {
   from: Place | null;
   to: Place | null;
   onFromChange: (p: Place | null) => void;
   onToChange: (p: Place | null) => void;
+  result: RouteResponse | null;
+  onResult: (r: RouteResponse | null) => void;
 };
 
-export default function SearchPanel({ from, to, onFromChange, onToChange }: Props) {
+export default function SearchPanel({ from, to, onFromChange, onToChange, result, onResult }: Props) {
   const [locating, setLocating] = useState(false);
+  const [routing, setRouting] = useState(false);
   const [message, setMessage] = useState<{ kind: "info" | "error"; text: string } | null>(null);
 
   function useMyLocation() {
@@ -45,11 +49,19 @@ export default function SearchPanel({ from, to, onFromChange, onToChange }: Prop
     );
   }
 
-  function findRoute() {
-    setMessage({
-      kind: "info",
-      text: "Safe routing is coming in a later phase. Your start and destination are set.",
-    });
+  async function findRoute() {
+    if (!from || !to) return;
+    setRouting(true);
+    setMessage(null);
+    onResult(null);
+    try {
+      onResult(await planRoute(from, to));
+    } catch (err) {
+      const text = err instanceof ApiError ? err.message : "Couldn't plan a route. Please try again.";
+      setMessage({ kind: "error", text });
+    } finally {
+      setRouting(false);
+    }
   }
 
   return (
@@ -61,6 +73,7 @@ export default function SearchPanel({ from, to, onFromChange, onToChange }: Prop
           value={from}
           onChange={(p) => {
             setMessage(null);
+            onResult(null);
             onFromChange(p);
           }}
           dotClass="bg-brand-teal"
@@ -83,6 +96,7 @@ export default function SearchPanel({ from, to, onFromChange, onToChange }: Prop
           value={to}
           onChange={(p) => {
             setMessage(null);
+            onResult(null);
             onToChange(p);
           }}
           dotClass="bg-brand-purple"
@@ -90,11 +104,12 @@ export default function SearchPanel({ from, to, onFromChange, onToChange }: Prop
         <button
           type="button"
           onClick={findRoute}
-          disabled={!from || !to}
+          disabled={!from || !to || routing}
           className="w-full rounded-lg bg-brand-purple py-3 font-semibold text-white transition hover:bg-brand-purple-light disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Find safe route
+          {routing ? "Finding routes…" : "Find safe route"}
         </button>
+        {result && <RouteCompare result={result} />}
         {message && (
           <p
             role={message.kind === "error" ? "alert" : "status"}

@@ -2,7 +2,7 @@
   "name": "wayra-saferoute",
   "private": true,
   "version": "0.0.0",
-  "description": "WAYRA \u00e2\u20ac\u201c SafeRoute: safest-route navigation web app (Chicago pilot)",
+  "description": "WAYRA - SafeRoute: safest-route navigation web app (Chicago pilot)",
   "scripts": {
     "setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1",
     "dev": "concurrently -k -n backend,frontend -c magenta,cyan \"npm:dev:backend\" \"npm:dev:frontend\"",
@@ -17,6 +17,7 @@
     "score": "backend\\.venv\\Scripts\\python.exe ml/05_score_edges.py",
     "ml:train": "npm run train",
     "ml:score": "npm run score",
+    "verify:routes": "cd backend && .venv\\Scripts\\python.exe scripts\\verify_routes.py",
     "test": "npm run test:backend && npm run test:ml && npm run test:frontend",
     "test:backend": "cd backend && .venv\\Scripts\\python.exe -m pytest -q",
     "test:ml": "cd ml && ..\\backend\\.venv\\Scripts\\python.exe -m pytest -q",

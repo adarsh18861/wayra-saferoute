@@ -99,3 +99,47 @@ export function inChicago(lat: number, lon: number): boolean {
   const b = CHICAGO_BOUNDS;
   return lat >= b.south && lat <= b.north && lon >= b.west && lon <= b.east;
 }
+
+// ---- Routing ----
+export type RouteProfile = "fastest" | "balanced" | "safest";
+export type RiskLevel = "green" | "amber" | "red";
+export type RouteSegment = { coords: [number, number][]; rel_risk: number; length_m: number; level: RiskLevel };
+export type RouteOption = {
+  profile: RouteProfile;
+  label: string;
+  lambda: number;
+  geometry: [number, number][];
+  distance_m: number;
+  eta_min: number;
+  safety_score: number;
+  risk_m: Record<RiskLevel, number>;
+  segments: RouteSegment[];
+  identical_to: RouteProfile[];
+};
+export type RouteResponse = {
+  depart_at: string;
+  bucket: number;
+  night_mode: boolean;
+  night_mode_source: "auto" | "override";
+  sunrise: string;
+  sunset: string;
+  identical_routes: boolean;
+  routes: RouteOption[];
+  compute_ms: number;
+};
+
+export function planRoute(
+  from: Place,
+  to: Place,
+  opts: { departAt?: string; nightMode?: boolean | "auto" } = {},
+): Promise<RouteResponse> {
+  return request("/api/route", {
+    method: "POST",
+    body: JSON.stringify({
+      from: { lat: from.lat, lng: from.lon },
+      to: { lat: to.lat, lng: to.lon },
+      depart_at: opts.departAt ?? null,
+      night_mode: opts.nightMode ?? "auto",
+    }),
+  });
+}

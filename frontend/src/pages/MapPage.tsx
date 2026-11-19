@@ -1,8 +1,9 @@
 import L from "leaflet";
 import { useEffect, useState } from "react";
-import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { ROUTE_STYLE } from "../components/RouteCompare";
 import SearchPanel from "../components/SearchPanel";
-import type { Place } from "../lib/api";
+import type { Place, RouteResponse } from "../lib/api";
 
 const CHICAGO_CENTER: [number, number] = [41.8781, -87.6298];
 
@@ -32,9 +33,26 @@ function FitToPlaces({ from, to }: { from: Place | null; to: Place | null }) {
   return null;
 }
 
+/** Draw order: thin alternatives first so the bold Safest line sits on top. */
+const DRAW_ORDER = ["fastest", "balanced", "safest"] as const;
+
+/** Fit the map to the returned routes. */
+function FitToRoutes({ result }: { result: RouteResponse | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!result) return;
+    const pts = result.routes.flatMap((r) => r.geometry);
+    if (pts.length > 1) {
+      map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft: [40, 340], paddingBottomRight: [40, 40], duration: 0.6 });
+    }
+  }, [map, result]);
+  return null;
+}
+
 export default function MapPage() {
   const [from, setFrom] = useState<Place | null>(null);
   const [to, setTo] = useState<Place | null>(null);
+  const [result, setResult] = useState<RouteResponse | null>(null);
 
   return (
     <>
@@ -58,9 +76,35 @@ export default function MapPage() {
             <Popup>To: {to.name}</Popup>
           </Marker>
         )}
+        {result &&
+          DRAW_ORDER.map((p) => {
+            const r = result.routes.find((x) => x.profile === p);
+            if (!r) return null;
+            const s = ROUTE_STYLE[p];
+            return (
+              <Polyline
+                key={p}
+                positions={r.geometry}
+                pathOptions={{ color: s.color, weight: s.weight, dashArray: s.dashArray, opacity: 0.9 }}
+              >
+                <Popup>
+                  {r.label}: safety {r.safety_score}/100, {(r.distance_m / 1000).toFixed(1)} km,{" "}
+                  {Math.round(r.eta_min)} min
+                </Popup>
+              </Polyline>
+            );
+          })}
         <FitToPlaces from={from} to={to} />
+        <FitToRoutes result={result} />
       </MapContainer>
-      <SearchPanel from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
+      <SearchPanel
+        from={from}
+        to={to}
+        onFromChange={setFrom}
+        onToChange={setTo}
+        result={result}
+        onResult={setResult}
+      />
     </>
   );
 }

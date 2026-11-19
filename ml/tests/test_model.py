@@ -148,3 +148,57 @@ def test_base_edge_risk_fallback_to_min():
 ])
 def test_is_lit(value, expected):
     assert edges.is_lit(value) is expected
+
+
+# ---------------------------------------------------------------- Phase 4 additions
+def test_road_class_lighting_fallback():
+    assert edges.road_class_lit("primary") and edges.road_class_lit("tertiary_link")
+    assert edges.road_class_lit("['footway', 'secondary']")
+    assert not edges.road_class_lit("residential") and not edges.road_class_lit("['service', 'footway']")
+    unlit = edges.unlit_mask(
+        lit_tag=np.array([True, False, False, False, False]),
+        lit_known=np.array([True, True, False, False, False]),  # 2nd edge: explicit lit=no
+        lamp_near=np.array([False, False, True, False, False]),
+        highway=np.array(["residential", "primary", "footway", "secondary", "path"], object),
+    )
+    assert unlit.tolist() == [False, True, False, False, True]
+
+
+def test_relative_risk_joint_percentile():
+    risk = np.array([[0.01, 0.10], [0.02, 0.20], [0.03, 0.30]], np.float32)  # col 1 = "night"
+    rel = edges.relative_risk(risk)
+    assert rel.min() == 0.0 and rel.max() == 1.0
+    assert (rel[:, 1] > rel[:, 0].max()).all()  # ranked jointly, night above all day values
+    tied = edges.relative_risk(np.array([[0.5, 0.5], [0.5, 0.5]], np.float32))
+    assert np.allclose(tied, 0.5)
+
+
+def test_parse_graphml_tiny(tmp_path):
+    xml = """<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+  <key id="d1" for="edge" attr.name="lit" attr.type="string" />
+  <key id="d2" for="edge" attr.name="geometry" attr.type="string" />
+  <key id="d3" for="edge" attr.name="length" attr.type="string" />
+  <key id="d4" for="edge" attr.name="highway" attr.type="string" />
+  <key id="d5" for="node" attr.name="x" attr.type="string" />
+  <key id="d6" for="node" attr.name="y" attr.type="string" />
+  <graph edgedefault="directed">
+    <node id="1"><data key="d6">41.0</data><data key="d5">-87.0</data></node>
+    <node id="2"><data key="d6">41.1</data><data key="d5">-87.1</data></node>
+    <edge source="1" target="2" id="0"><data key="d3">12.5</data><data key="d4">primary</data></edge>
+    <edge source="2" target="1" id="0"><data key="d1">yes</data><data key="d3">13.0</data>
+      <data key="d4">['footway', 'service']</data>
+      <data key="d2">LINESTRING (-87.0 41.0, -87.05 41.06, -87.1 41.1)</data></edge>
+  </graph>
+</graphml>"""
+    p = tmp_path / "g.graphml"
+    p.write_text(xml, encoding="utf-8")
+    e, nodes, off, coords = edges.parse_graphml(p)
+    assert nodes["osmid"].tolist() == [1, 2]
+    assert e[["u", "v"]].values.tolist() == [[1, 2], [2, 1]]
+    assert e["lit_tag"].tolist() == [False, True] and e["lit_known"].tolist() == [False, True]
+    assert e["highway"].tolist()[0] == "primary"
+    assert off.tolist() == [0, 2, 5]
+    # second edge geometry was stored 1->2 in the file and is flipped to run u=2 -> v=1
+    assert coords[2].tolist() == [41.1, -87.1] and coords[4].tolist() == [41.0, -87.0]
+    assert e["lat"].tolist()[0] == pytest.approx(41.05)
