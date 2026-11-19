@@ -50,32 +50,54 @@ export default function RouteLayer({ result, selected, onSelect }: Props) {
           </Polyline>
         </Fragment>
       ))}
-      {sel && (
-        <>
-          <Polyline positions={sel.geometry} pathOptions={{ color: "#ffffff", weight: 11, opacity: 0.95 }} interactive={false} />
-          <Polyline positions={sel.geometry} pathOptions={{ color: "#3b1f6b", weight: 9, opacity: 0.35 }} interactive={false} />
-          {runs.map((run, i) => (
-            <Polyline
-              key={`${sel.profile}-${i}`}
-              positions={run.coords}
-              pathOptions={{ color: LEVEL_COLOR[run.level], weight: 6, opacity: 1, lineCap: "round", lineJoin: "round" }}
-              interactive={false}
-            />
-          ))}
-        </>
+      {sel && <CasedRoute geometry={sel.geometry} runs={runs} />}
+    </>
+  );
+}
+
+/**
+ * The selected route, drawn so it reads at every zoom and over any map colour: a dark halo, a white
+ * casing, then the green/amber/red runs on top (or brand purple while risk colours are unknown).
+ */
+export function CasedRoute({ geometry, runs }: { geometry: [number, number][]; runs: Run[] | null }) {
+  const round = { lineCap: "round", lineJoin: "round" } as const;
+  return (
+    <>
+      <Polyline positions={geometry} pathOptions={{ color: "#1e1033", weight: 17, opacity: 0.35, ...round }} interactive={false} />
+      <Polyline positions={geometry} pathOptions={{ color: "#ffffff", weight: 13, opacity: 1, ...round }} interactive={false} />
+      {runs ? (
+        runs.map((run, i) => (
+          <Polyline key={i} positions={run.coords} pathOptions={{ color: LEVEL_COLOR[run.level], weight: 8, opacity: 1, ...round }} interactive={false} />
+        ))
+      ) : (
+        <Polyline positions={geometry} pathOptions={{ color: "#3b1f6b", weight: 8, opacity: 0.9, ...round }} interactive={false} />
       )}
     </>
   );
 }
 
+/** Highlight of one street picked in the Directions list (drawn under the route). */
+export function FocusedStreet({ coords }: { coords: [number, number][] | null }) {
+  if (!coords || coords.length < 2) return null;
+  return <Polyline positions={coords} pathOptions={{ color: "#7c3aed", weight: 26, opacity: 0.3, lineCap: "round", lineJoin: "round" }} interactive={false} />;
+}
+
+type Padding = () => { topLeft: [number, number]; bottomRight: [number, number] };
+
+/** Fly to a street segment (Directions click), keeping it clear of the panel. */
+export function FlyToCoords({ coords, nonce, padding }: { coords: [number, number][] | null; nonce: number; padding: Padding }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!coords || coords.length === 0) return;
+    const p = padding();
+    map.flyToBounds(L.latLngBounds(coords), { paddingTopLeft: p.topLeft, paddingBottomRight: p.bottomRight, maxZoom: 18, duration: 0.6 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, nonce]);
+  return null;
+}
+
 /** Fit the map to the selected route, keeping it clear of the floating panels. */
-export function FitToRoute({
-  route,
-  padding,
-}: {
-  route: RouteOption | undefined;
-  padding: () => { topLeft: [number, number]; bottomRight: [number, number] };
-}) {
+export function FitToRoute({ route, padding, nonce = 0 }: { route: RouteOption | undefined; padding: Padding; nonce?: number }) {
   const map = useMap();
   useEffect(() => {
     if (!route || route.geometry.length < 2) return;
@@ -88,10 +110,11 @@ export function FitToRoute({
         duration: 0.6,
         maxZoom: 17,
       });
-    }, 80);
+    }, 120);
     return () => clearTimeout(t);
-    // Only refit when the selected route (geometry) changes, not when the padding callback is recreated.
+    // Refit when the selected route changes or on request (Fit route button, panel toggled), not when
+    // the padding callback is recreated.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, route]);
+  }, [map, route, nonce]);
   return null;
 }

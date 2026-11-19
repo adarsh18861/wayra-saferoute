@@ -178,12 +178,13 @@ def test_parse_graphml_tiny(tmp_path):
   <key id="d2" for="edge" attr.name="geometry" attr.type="string" />
   <key id="d3" for="edge" attr.name="length" attr.type="string" />
   <key id="d4" for="edge" attr.name="highway" attr.type="string" />
+  <key id="d7" for="edge" attr.name="name" attr.type="string" />
   <key id="d5" for="node" attr.name="x" attr.type="string" />
   <key id="d6" for="node" attr.name="y" attr.type="string" />
   <graph edgedefault="directed">
     <node id="1"><data key="d6">41.0</data><data key="d5">-87.0</data></node>
     <node id="2"><data key="d6">41.1</data><data key="d5">-87.1</data></node>
-    <edge source="1" target="2" id="0"><data key="d3">12.5</data><data key="d4">primary</data></edge>
+    <edge source="1" target="2" id="0"><data key="d3">12.5</data><data key="d4">primary</data><data key="d7">North State Street</data></edge>
     <edge source="2" target="1" id="0"><data key="d1">yes</data><data key="d3">13.0</data>
       <data key="d4">['footway', 'service']</data>
       <data key="d2">LINESTRING (-87.0 41.0, -87.05 41.06, -87.1 41.1)</data></edge>
@@ -196,6 +197,8 @@ def test_parse_graphml_tiny(tmp_path):
     assert e[["u", "v"]].values.tolist() == [[1, 2], [2, 1]]
     assert e["lit_tag"].tolist() == [False, True] and e["lit_known"].tolist() == [False, True]
     assert e["highway"].tolist()[0] == "primary"
+    assert e["name"].tolist() == ["North State Street", ""]
+    assert edges.first_tag_value("['Oak Ave', 'Elm St']") == "Oak Ave" and edges.first_tag_value(None) == ""
     assert off.tolist() == [0, 2, 5]
     # second edge geometry was stored 1->2 in the file and is flipped to run u=2 -> v=1
     assert coords[2].tolist() == [41.1, -87.1] and coords[4].tolist() == [41.0, -87.0]

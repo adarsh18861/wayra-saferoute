@@ -12,6 +12,25 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+// Last signed-in user, so the app (and the offline SOS) still opens when the server can't be reached.
+const USER_KEY = "wayra.user";
+function cacheUser(u: User | null) {
+  try {
+    if (u) localStorage.setItem(USER_KEY, JSON.stringify(u));
+    else localStorage.removeItem(USER_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+function cachedUser(): User | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(() => getToken() !== null);
@@ -20,10 +39,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!getToken()) return;
     let cancelled = false;
     apiMe()
-      .then((u) => !cancelled && setUser(u))
+      .then((u) => {
+        cacheUser(u);
+        if (!cancelled) setUser(u);
+      })
       .catch((err: unknown) => {
-        // Drop the token only if the server rejected it, not on a network blip.
-        if (err instanceof ApiError && err.status === 401) setToken(null);
+        // Drop the token only if the server rejected it. Offline / server down: keep the session with
+        // the cached user so the app shell and the offline SOS still work.
+        if (err instanceof ApiError && err.status === 401) {
+          setToken(null);
+          cacheUser(null);
+        } else if (!cancelled) setUser(cachedUser());
       })
       .finally(() => !cancelled && setLoading(false));
     return () => {
@@ -34,17 +60,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const res = await apiLogin(email, password);
     setToken(res.access_token);
+    cacheUser(res.user);
     setUser(res.user);
   }, []);
 
   const register = useCallback(async (name: string, email: string, password: string) => {
     const res = await apiRegister(name, email, password);
     setToken(res.access_token);
+    cacheUser(res.user);
     setUser(res.user);
   }, []);
 
   const logout = useCallback(() => {
     setToken(null);
+    cacheUser(null);
     setUser(null);
   }, []);
 

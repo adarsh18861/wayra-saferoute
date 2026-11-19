@@ -209,3 +209,39 @@ def test_heatmap_and_model_card(client: TestClient, auth_headers: dict[str, str]
     finally:
         app.state.risk_service = None
         app.state.metrics_path = old_metrics
+
+
+# ---------------------------------------------------------------- street names (directions list)
+def test_street_label_fallbacks() -> None:
+    from app.services.router_engine import street_label
+    assert street_label("North State Street", "primary") == "North State Street"
+    assert street_label("", "footway") == "Footpath"
+    assert street_label("", "['service', 'footway']") == "Service road / alley"
+    assert street_label("", "") == "Unnamed path"
+
+
+def test_segments_carry_street_names() -> None:
+    base = fake_engine()
+    names = np.array([f"Street {i}" for i in range(base.n_edges)], dtype=object)
+    eng = RouterEngine(base.node_lat, base.node_lon, base.eu, base.ev, base.length, base.rel_risk,
+                       base.unlit, names=names)
+    res = eng.route((NODE_LAT[0], NODE_LON[0]), (NODE_LAT[3], NODE_LON[3]), bucket=7, night=False)
+    for r in res["routes"]:
+        assert all(s["name"] == names[e] for s, e in zip(r.segments, r.edges.tolist()))
+    # Without name data the field is simply absent (older graph caches).
+    plain = base.route((NODE_LAT[0], NODE_LON[0]), (NODE_LAT[3], NODE_LON[3]), bucket=7, night=False)
+    assert "name" not in plain["routes"][0].segments[0]
+
+
+def test_label_edges_names_sidewalks_from_nearby_street() -> None:
+    from app.services.router_engine import label_edges
+    m = 1 / 111_320  # one metre of latitude
+    name = np.array(["North State Street", "", ""])
+    highway = np.array(["primary", "footway", "footway"])
+    # A 300 m street running north; a 40 m sidewalk 12 m east of its far end; a path ~1 km away.
+    lat_u = np.array([41.88, 41.88 + 250 * m, 41.89])
+    lat_v = np.array([41.88 + 300 * m, 41.88 + 290 * m, 41.89 + 40 * m])
+    kx = 1 / (111_320 * np.cos(np.radians(41.88)))
+    lon_u = np.array([-87.63, -87.63 + 12 * kx, -87.63])
+    lon_v = lon_u.copy()
+    assert label_edges(name, highway, lat_u, lon_u, lat_v, lon_v).tolist() ==         ["North State Street", "North State Street", "Footpath"]

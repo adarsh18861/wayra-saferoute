@@ -24,8 +24,8 @@ wayra/
   CLAUDE.md
   README.md
   DEMO.md            # two-window presenter script (user app + contact watch page)
-  package.json       # npm scripts: setup, dev, dev:backend, dev:frontend, test
-  scripts/           # PowerShell helpers (setup.ps1), make_pwa_icons.py
+  package.json       # npm scripts: setup, dev, dev:backend, dev:frontend, demo, seed:demo, test
+  scripts/           # setup.ps1, demo.mjs (npm run demo), make_pwa_icons.py
   .env.example
   data/              # gitignored: raw/, processed/, graph/
   ml/
@@ -38,17 +38,18 @@ wayra/
   backend/
     app/
       main.py
-      core/ (config, security, db)
+      core/ (config, security, db, startup_check)
       models/ schemas/
       routers/ (auth, geocode, routing (route/status/heatmap/model card), contacts, trips, sos (+ /alerts), reports, public_live (watch/track), ws, deps, live_deps)
-      services/ (geocode.py, router_engine.py, risk_service.py, night_mode.py, notifier.py, deviation.py, live_hub.py, live_service.py, snapshots.py, incidents.py, reports_store.py)
+      services/ (geocode.py, router_engine.py, risk_service.py, night_mode.py, notifier.py, deviation.py, live_hub.py, live_service.py, snapshots.py, incidents.py, reports_store.py, demo_seed.py)
+    scripts/ (verify_routes.py, seed_demo.py)
     tests/
   frontend/
     src/
       pages/ (Landing, Map, Track (+ WatchPage export), Contacts, SOSHistory, Login, Register, Model card)
-      components/ (ui/ (Logo, Button, Reveal, Modal), landing/ (PhoneMock), Shell, Header, AuthLayout, SearchPanel, PlaceInput, DemoChips, RouteCompare, RouteLayer, SafetyLegend, InfoTip, HeatmapLayer, HeatmapControls, SOSButton (+ SOS overlay), CheckPrompt, TripBar, LiveLayers, LiveViewer, VoiceSOS, FakeCall, Toaster, NightModeBadge, ReportIncident)
+      components/ (ui/ (Logo, Button, Reveal, Modal), landing/ (PhoneMock), Shell, Header, AuthLayout, SearchPanel, StartTripBar, Directions, PlaceInput, DemoChips, RouteCompare, RouteLayer, SafetyLegend, InfoTip, HeatmapLayer, HeatmapControls, SOSButton (+ SOS overlay), CheckPrompt, TripBar, LiveLayers, LiveViewer, VoiceSOS, FakeCall, Toaster, NightModeBadge, ReportIncident)
       hooks/ (useWebSocket, useOnlineStatus)
-      lib/ (api.ts, auth.tsx, safety.tsx (SafetyProvider), voice.ts, sound.ts, geo.ts, validation.ts, risk.ts, time.ts)
+      lib/ (api.ts, auth.tsx, safety.tsx (SafetyProvider), voice.ts, sound.ts, geo.ts, validation.ts, risk.ts, routeStats.ts, time.ts)
 ```
 
 ## Data
@@ -123,6 +124,19 @@ Build one phase at a time, in this order. Each phase ends with tests, a README u
 | 6 | Trusted contacts CRUD, `Notifier`, SOS with log and `tel:911` (features 7, 13); wire the existing `SOSButton` | ✅ done (with 7 + 8) |
 | 7 | Live trip sharing over WebSocket, deviation alerts, incident reports with live recalculation (features 5, 8, 9) | ✅ done (with 6 + 8) |
 | 8 | Voice SOS, fake call, PWA offline alerts, demo mode (features 10, 11, 12, 14) | ✅ done: built together with 6 and 7 on request, committed as "Phases 6-7: safety features" |
+| **8 (final)** | **Demo polish** (committed as "Phase 8: demo polish"; no new big features): `npm run demo`, `npm run seed:demo`, startup checklist, map-tile notice, final README, and the UI fixes from testing (sticky Start trip, zoom 19 + Fit route + collapsible panel + cased route, Directions list, risk vs Fastest, location explainer) | ✅ done |
+
+**Phase 8 (demo polish) decisions (as built):**
+- *One-command demo.* `npm run demo` = `scripts/demo.mjs` (Node): checks the venv and that port **8080** is free, runs `npm --prefix frontend run build` (skip with `-- --skip-build`), then starts uvicorn (no reload, 127.0.0.1:8080) with `SERVE_FRONTEND=true` and `PUBLIC_BASE_URL=http://localhost:8080`, waits for `/api/health`, and prints the URLs plus the demo login and watch links (`seed_demo.py --print-only`). The backend serves `frontend/dist` itself (`main.py` `_serve_frontend`, registered after the API routers; real files from dist, everything else → `index.html`; `api/*` → 404; `no-cache` for `index.html`/`sw.js`/manifest, immutable for `assets/`), so app, API and WebSockets share one origin and the PWA/service worker work on localhost. Dev (`npm run dev`, :8000 + :5173) is unchanged.
+- *Demo seed.* `npm run seed:demo` (`backend/scripts/seed_demo.py` → `services/demo_seed.py`) creates or resets `demo@wayra.app` / `Wayra@123` ("Asha Rao") with contacts **Mom** and **Priya – friend** (+1 312 555 0100 / 0142). Rerun = reset password/name, end active trips, delete the user's alerts + deliveries and incident reports, drop other contacts, **keep the two watch tokens** (links stay valid). Run it with the server stopped (live trip state is in memory). Links default to `http://localhost:8080` (`--base-url` to change).
+- *Startup checklist* (`core/startup_check.py`, printed to stderr from the lifespan): Walk graph (nodes/edges, street names), Edge risk, Model card, Heatmap, Database (`SELECT 1` + user count), Frontend build (only with `SERVE_FRONTEND`). ✓/✗ (ASCII OK/!! if the console can't encode them); a missing item names the npm command and logs a warning; the app still starts.
+- *Street names / Directions.* `05_score_edges.py` now keeps the first OSM `name` per edge in `walk_edges.parquet` (`first_tag_value` handles osmnx list strings; `name` is in `EDGE_CACHE_COLS`, so old caches rebuild). Only 21 % of walk edges are named (sidewalks/crossings are separate unnamed footways), so `router_engine.label_edges` gives an unnamed edge the name of the nearest named-edge sample within 25 m (named edges sampled every 10 m along u–v; cKDTree), else a road-class label (`UNNAMED_LABELS`: Footpath, Service road / alley, Steps, ...). ~8 s once, cached in `data/graph/walk_labels.npz` (rebuilt when older than walk_edges); warm startup ~3 s. Each route segment gets `name` (absent without name data). Frontend `lib/routeStats.ts` `directionRows`: merge consecutive same-name edges, fold generic labels < 30 m into the previous row; row colour = level of the length-weighted mean rel_risk; click → `FlyToCoords` (maxZoom 18) + a purple `FocusedStreet` highlight.
+- *Risk vs Fastest.* `compareToFastest` uses the length-weighted mean rel_risk from the segments: "−38% risk vs Fastest", plus "1.6× less risk than Fastest" when the ratio is at least 1.5. Cards show the short form ("−38% risk") and minutes vs Fastest (replacing the score difference); the summary under the cards and the safety-score explainer say night scores are lower because night is riskier citywide.
+- *Map.* `maxZoom` 19 (map + tiles). Selected route = `CasedRoute` (dark halo 17 px, white casing 13 px, coloured runs 8 px; also used by `TripRouteLayer`). A/B pins 38 px with a white border + dark outline, `zIndexOffset` 500. **Fit route** button (right stack; during a trip it stops following) and a collapse button in the panel header → "Show routes" pill; toggling refits via a nonce. Fit padding measures the search panel or the trip panel. `TileStatus` listens to `tileerror`/`tileload` and shows "Map tiles need internet"; tiles redraw on `online`.
+- *Panel.* The search form folds into the "From → To · Edit" line on all screen sizes once routes arrive. `StartTripBar` is a `shrink-0` footer of the panel (always visible), label "Start trip on <Route> route", demo checkbox below. With demo off and geolocation not yet `granted` (Permissions API), a portal-rendered modal explains why location is needed and that it is shared only during the trip/SOS (denied → "Start in demo mode").
+- *Auto demo.* `DemoState.autoReason` keeps why demo switched on by itself (outside Chicago / permission off / no fix); `TripBar` shows it as an amber note under the DEMO MODE strip, plus a 15 s warn toast.
+- *Offline start.* `lib/auth.tsx` caches the user in `localStorage` (`wayra.user`); if `/auth/me` fails without a 401 (offline, server down) the cached user is used, so an offline reload of `/app` opens the shell and the offline SOS instead of bouncing to `/login`.
+- *Checks.* `tests/test_demo_tools.py` (seed idempotency + token stability, checklist, static serving / SPA fallback / path traversal), name tests in `test_routing.py` and `ml/tests/test_model.py`. A Playwright script (Edge, outside the repo) ran the DEMO.md flow against `npm run demo`: 30/30 checks (sticky button in the viewport at 1280×800 and 390×844, risk comparison, directions + zoom, label follows the card, collapse, Fit route, zoom 19, trip + watch page, check-in → off-route alert, SOS → banner → resolve, auto demo from an India fix, explainer → denied → auto demo, tile notice, offline reload stays on `/app`, no console errors, no horizontal scroll).
 
 **Phases 6–7 decisions (as built; also covers the Phase 8 features):**
 - *Alert delivery without SMS accounts.* Trusted contacts are not app users. Each `Contact` has a `watch_token` (`secrets.token_urlsafe(16)`, 128 bit) → public page `/watch/:token` (no login). A trip has a `share_token` → `/track/:token` for people who aren't saved contacts. `POST /api/contacts/{id}/reset-link` rotates a watch token. Contacts need a name and a phone **or** email (phone regex `^\+?[0-9][0-9 ()\-.]{5,22}$`); max 5 (409). Watchers see only the user's first name.
@@ -178,7 +192,7 @@ Build one phase at a time, in this order. Each phase ends with tests, a README u
 ## Conventions
 - **Dev environment is Windows + PowerShell.** Do not rely on `make` or Docker for now; use npm scripts and PowerShell scripts (`scripts/*.ps1`).
 - Python is the official CPython 3.11 (not MSYS2/MinGW Python) in `backend/.venv`; npm scripts call `backend\.venv\Scripts\python.exe` directly, so no activation is needed.
-- Setup: `npm install && npm run setup`. Run the app: `npm run dev` (backend on :8000 + Vite on :5173, which proxies `/api`), or `npm run dev:backend` / `npm run dev:frontend`. Tests: `npm test`.
+- Setup: `npm install && npm run setup`. Run the app: `npm run dev` (backend on :8000 + Vite on :5173, which proxies `/api`), or `npm run dev:backend` / `npm run dev:frontend`. Presenting: `npm run seed:demo`, then `npm run demo` (production build + backend on :8080). Tests: `npm test`.
 - ML pipeline: each step is an npm script that runs the `ml/` scripts with the backend venv's Python: `npm run data` (alias `ml:data`), `npm run train` (features + model, alias `ml:train`, ~1.5 min), `npm run score` (walk graph + edge risk, alias `ml:score`; the first run takes ~4 min to download the graph, reruns <1 min), `npm run verify:routes` (demo-trip table on real data).
 - Docker/Makefile are deferred: add `docker-compose.yml` and a `Makefile` later only if asked; they are not part of the Windows workflow.
 - No secrets in git; keep keys in `.env` (see `.env.example`). `data/` is gitignored. `npm run setup` writes a random `JWT_SECRET` into a new `.env`.

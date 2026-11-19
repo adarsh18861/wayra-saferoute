@@ -90,6 +90,11 @@ export default function TripBar({ onReport }: { onReport: () => void }) {
           <span className="truncate text-[11px] text-white/85">Simulated GPS · fast timers 10 s / 20 s</span>
         </div>
       )}
+      {demo.on && demo.autoReason && (
+        <p role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs leading-snug text-amber-900">
+          <span className="font-bold">Demo mode switched on automatically.</span> {demo.autoReason}
+        </p>
+      )}
 
       <button
         type="button"

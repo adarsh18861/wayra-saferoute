@@ -1,5 +1,5 @@
 import L from "leaflet";
-import { CircleAlert, Flag, Layers, LocateFixed, X } from "lucide-react";
+import { CircleAlert, Flag, Layers, LocateFixed, Maximize2, PanelLeftOpen, WifiOff, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, ZoomControl, useMap } from "react-leaflet";
 import type { DemoTrip } from "../components/DemoChips";
@@ -8,7 +8,7 @@ import HeatmapLayer from "../components/HeatmapLayer";
 import { FitOnce, FollowPosition, LiveMarker, MapClick, ReportMarkers, TripRouteLayer } from "../components/LiveLayers";
 import ReportIncident from "../components/ReportIncident";
 import TripBar from "../components/TripBar";
-import RouteLayer, { FitToRoute } from "../components/RouteLayer";
+import RouteLayer, { FitToRoute, FlyToCoords, FocusedStreet } from "../components/RouteLayer";
 import SafetyLegend from "../components/SafetyLegend";
 import SearchPanel, { type NightSetting } from "../components/SearchPanel";
 import {
@@ -31,15 +31,61 @@ import { chicagoBucket, chicagoClock } from "../lib/time";
 
 const CHICAGO_CENTER: [number, number] = [41.8781, -87.6298];
 
-// Simple CSS pin icons (avoids Leaflet's default image icons, which break under Vite bundling).
+// CSS pin icons (avoids Leaflet's default image icons, which break under Vite bundling). Large, with a
+// white border, a dark outline and a shadow so they stand out over the route and any map colour.
 function pin(color: string, letter: string): L.DivIcon {
   return L.divIcon({
     className: "",
-    html: `<div style="background:${color};width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center"><span style="transform:rotate(45deg);color:#fff;font:700 12px system-ui">${letter}</span></div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 30],
-    popupAnchor: [0, -28],
+    html: `<div style="background:${color};width:38px;height:38px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #fff;outline:1.5px solid rgba(15,10,30,.55);box-shadow:0 3px 10px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center"><span style="transform:rotate(45deg);color:#fff;font:800 16px system-ui">${letter}</span></div>`,
+    iconSize: [38, 38],
+    iconAnchor: [19, 40],
+    popupAnchor: [0, -38],
   });
+}
+
+type Padding = () => { topLeft: [number, number]; bottomRight: [number, number] };
+
+/** OSM tiles come from the internet: report failures (and recoveries) so the page can show a notice. */
+function TileStatus({ onChange }: { onChange: (failing: boolean) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    let failing = false;
+    const set = (v: boolean) => {
+      if (v !== failing) {
+        failing = v;
+        onChange(v);
+      }
+    };
+    const onErr = () => set(true);
+    const onLoad = () => set(false);
+    const retry = () =>
+      map.eachLayer((l) => {
+        if (l instanceof L.TileLayer) l.redraw();
+      });
+    const layers: L.TileLayer[] = [];
+    map.eachLayer((l) => {
+      if (l instanceof L.TileLayer) layers.push(l);
+    });
+    layers.forEach((l) => l.on("tileerror", onErr).on("tileload", onLoad));
+    window.addEventListener("online", retry);
+    return () => {
+      layers.forEach((l) => l.off("tileerror", onErr).off("tileload", onLoad));
+      window.removeEventListener("online", retry);
+    };
+  }, [map, onChange]);
+  return null;
+}
+
+/** Fit the whole trip route on request (Fit route button during a trip). */
+function FitGeometry({ geometry, nonce, padding }: { geometry: [number, number][]; nonce: number; padding: Padding }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!nonce || geometry.length < 2) return;
+    const p = padding();
+    map.flyToBounds(L.latLngBounds(geometry), { paddingTopLeft: p.topLeft, paddingBottomRight: p.bottomRight, maxZoom: 17, duration: 0.6 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, nonce]);
+  return null;
 }
 const FROM_ICON = pin("#0f766e", "A");
 const TO_ICON = pin("#3b1f6b", "B");
@@ -75,6 +121,10 @@ export default function MapPage() {
   const [selected, setSelected] = useState<RouteProfile>("safest");
   const [routing, setRouting] = useState(false);
   const [error, setError] = useState<FriendlyError | null>(null);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [fitNonce, setFitNonce] = useState(0);
+  const [focus, setFocus] = useState<{ coords: [number, number][]; index: number; nonce: number } | null>(null);
+  const [tilesFailing, setTilesFailing] = useState(false);
 
   const [status, setStatus] = useState<MapStatus | null>(null);
   const [statusError, setStatusError] = useState<FriendlyError | null>(null);
@@ -87,6 +137,7 @@ export default function MapPage() {
   const heatCache = useRef(new Map<number, Heatmap>());
 
   const panelRef = useRef<HTMLDivElement>(null);
+  const tripPanelRef = useRef<HTMLDivElement>(null);
   const mapBoxRef = useRef<HTMLDivElement>(null);
   const reqId = useRef(0);
 
@@ -233,8 +284,8 @@ export default function MapPage() {
   // Keep the fitted route clear of the floating panel (left column on desktop, top sheet on phones).
   const fitPadding = useCallback(() => {
     const map = mapBoxRef.current?.getBoundingClientRect();
-    const panel = panelRef.current?.getBoundingClientRect();
-    if (!map || !panel) return { topLeft: [40, 40] as [number, number], bottomRight: [40, 40] as [number, number] };
+    const panel = (panelRef.current ?? tripPanelRef.current)?.getBoundingClientRect();
+    if (!map || !panel || panel.width === 0) return { topLeft: [48, 72] as [number, number], bottomRight: [96, 48] as [number, number] };
     if (panel.width < map.width * 0.6) {
       return { topLeft: [panel.right - map.left + 32, 40] as [number, number], bottomRight: [96, 40] as [number, number] };
     }
@@ -242,6 +293,19 @@ export default function MapPage() {
   }, []);
 
   const selRoute = result?.routes.find((r) => r.profile === selected);
+
+  // A new route or another card clears the street picked in Directions.
+  useEffect(() => setFocus(null), [result, selected]);
+
+  function togglePanel() {
+    setPanelOpen((o) => !o);
+    // Refit once the panel has moved, so the route uses the freed space (or clears the panel again).
+    window.setTimeout(() => setFitNonce((n) => n + 1), 60);
+  }
+  const focusStreet = useCallback((coords: [number, number][], index: number) => {
+    setFocus((f) => ({ coords, index, nonce: (f?.nonce ?? 0) + 1 }));
+  }, []);
+  const onTiles = useCallback((failing: boolean) => setTilesFailing(failing), []);
   const notReady =
     statusError ??
     (status && !status.routing_ready
@@ -253,6 +317,7 @@ export default function MapPage() {
       <MapContainer
         center={CHICAGO_CENTER}
         zoom={12}
+        maxZoom={19}
         zoomControl={false}
         dragging
         touchZoom
@@ -265,14 +330,17 @@ export default function MapPage() {
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={19}
+          maxNativeZoom={19}
         />
+        <TileStatus onChange={onTiles} />
         <ZoomControl position="topright" />
         {heatOn && heat && <HeatmapLayer data={heat} />}
         {reports.length > 0 && <ReportMarkers reports={reports} />}
         {trip ? (
           <>
             <TripRouteLayer geometry={trip.geometry} segments={tripSegments} />
-            <Marker position={trip.geometry[trip.geometry.length - 1]} icon={TO_ICON}>
+            <Marker position={trip.geometry[trip.geometry.length - 1]} icon={TO_ICON} zIndexOffset={500}>
               <Popup>{trip.to_name || "Destination"}</Popup>
             </Marker>
             {position && (
@@ -285,10 +353,17 @@ export default function MapPage() {
               />
             )}
             <FitOnce points={trip.geometry} deps={trip.id} />
+            <FitGeometry geometry={trip.geometry} nonce={fitNonce} padding={fitPadding} />
             <FollowPosition point={position} follow={follow} onUserMove={() => setFollow(false)} />
           </>
         ) : (
-          result && <RouteLayer result={result} selected={selected} onSelect={setSelected} />
+          result && (
+            <>
+              <FocusedStreet coords={focus?.coords ?? null} />
+              <RouteLayer result={result} selected={selected} onSelect={setSelected} />
+              <FlyToCoords coords={focus?.coords ?? null} nonce={focus?.nonce ?? 0} padding={fitPadding} />
+            </>
+          )
         )}
         {reportMode && (
           <MapClick
@@ -299,17 +374,17 @@ export default function MapPage() {
           />
         )}
         {!trip && from && (
-          <Marker position={[from.lat, from.lon]} icon={FROM_ICON}>
+          <Marker position={[from.lat, from.lon]} icon={FROM_ICON} zIndexOffset={500}>
             <Popup>From: {from.name}</Popup>
           </Marker>
         )}
         {!trip && to && (
-          <Marker position={[to.lat, to.lon]} icon={TO_ICON}>
+          <Marker position={[to.lat, to.lon]} icon={TO_ICON} zIndexOffset={500}>
             <Popup>To: {to.name}</Popup>
           </Marker>
         )}
         <FitToPlaces from={from} to={to} active={!result && !routing && !trip} />
-        {!trip && <FitToRoute route={selRoute} padding={fitPadding} />}
+        {!trip && <FitToRoute route={selRoute} padding={fitPadding} nonce={fitNonce} />}
       </MapContainer>
 
       {/* Overlay: the container is click-through; only the panels themselves take pointer events. */}
@@ -331,7 +406,26 @@ export default function MapPage() {
             </button>
           </div>
         )}
-        {!trip && (
+        {tilesFailing && (
+          <div role="status" className="pointer-events-auto flex w-full items-start gap-2 rounded-2xl bg-slate-900/90 px-3.5 py-2 text-xs text-white shadow-[var(--shadow-card)] sm:w-[25rem]">
+            <WifiOff className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden />
+            <span>
+              <span className="font-semibold">Map tiles need internet.</span> The street map can't load right now; routes, SOS and alerts
+              still work. It retries when you're back online.
+            </span>
+          </div>
+        )}
+        {!trip && !panelOpen && (
+          <button
+            type="button"
+            onClick={togglePanel}
+            className="pointer-events-auto inline-flex h-11 items-center gap-2 self-start rounded-full bg-white px-4 text-sm font-semibold text-brand-800 shadow-[var(--shadow-lift)] ring-1 ring-line transition hover:bg-brand-50"
+          >
+            <PanelLeftOpen className="h-[18px] w-[18px]" aria-hidden />
+            {result ? "Show routes" : "Show search"}
+          </button>
+        )}
+        {!trip && panelOpen && (
         <SearchPanel
           ref={panelRef}
           from={from}
@@ -352,13 +446,16 @@ export default function MapPage() {
           selected={selected}
           onSelect={setSelected}
           onStartTrip={startTrip}
+          onFocusStreet={focusStreet}
+          focusedStreet={focus?.index ?? null}
+          onCollapse={togglePanel}
         />
         )}
       </div>
 
       {/* Active trip: bottom card on phones (above SOS), left column on desktop. */}
       {trip && (
-        <div className="pointer-events-none absolute inset-x-3 bottom-24 z-[1000] flex max-h-[calc(100%-7rem)] flex-col overflow-y-auto sm:bottom-auto sm:left-3 sm:right-auto sm:top-3 sm:max-h-[calc(100%-1.5rem)] sm:w-[25rem]">
+        <div ref={tripPanelRef} className="pointer-events-none absolute inset-x-3 bottom-24 z-[1000] flex max-h-[calc(100%-7rem)] flex-col overflow-y-auto sm:bottom-auto sm:left-3 sm:right-auto sm:top-3 sm:max-h-[calc(100%-1.5rem)] sm:w-[25rem]">
           <TripBar onReport={reportHere} />
         </div>
       )}
@@ -396,7 +493,7 @@ export default function MapPage() {
       />
 
       {/* Bottom-left: heatmap controls and/or route legend (kept clear of the SOS button on the right). */}
-      <div className={`pointer-events-none absolute bottom-3 left-3 right-24 z-[1000] flex-col items-start gap-2 sm:left-[27rem] sm:right-auto sm:w-80 ${trip ? "hidden sm:flex" : "flex"}`}>
+      <div className={`pointer-events-none absolute bottom-3 left-3 right-24 z-[1000] flex-col items-start gap-2 sm:right-auto sm:w-80 ${trip || panelOpen ? "sm:left-[27rem]" : "sm:left-3"} ${trip ? "hidden sm:flex" : "flex"}`}>
         {(result || trip) && !(heatOn && window.matchMedia("(max-width: 639px)").matches) && (
           <div className="pointer-events-auto">
             <SafetyLegend />
@@ -426,6 +523,22 @@ export default function MapPage() {
             className="pointer-events-auto flex h-11 items-center gap-1.5 rounded-full bg-white px-3.5 text-sm font-semibold text-brand-800 shadow-[var(--shadow-lift)] ring-1 ring-line transition hover:bg-brand-50"
           >
             <LocateFixed className="h-[18px] w-[18px]" aria-hidden /> {demoMode.on ? "Follow walker" : "Recenter"}
+          </button>
+        )}
+        {(trip || selRoute) && (
+          <button
+            type="button"
+            onClick={() => {
+              setFocus(null);
+              if (trip) setFollow(false);
+              setFitNonce((n) => n + 1);
+            }}
+            aria-label="Fit route"
+            title="Zoom to the whole route"
+            className="pointer-events-auto flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full bg-white px-3 text-sm font-semibold text-brand-800 shadow-[var(--shadow-lift)] ring-1 ring-line transition hover:-translate-y-px hover:bg-brand-50 active:scale-95 sm:px-3.5"
+          >
+            <Maximize2 className="h-[18px] w-[18px]" aria-hidden />
+            <span className="hidden sm:inline">Fit route</span>
           </button>
         )}
         <button

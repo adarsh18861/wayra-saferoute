@@ -9,6 +9,10 @@ export function SafetyScoreExplainer() {
       window, learned from past street-crime reports (2022 onwards) plus lighting and activity estimates. The score
       compares this route's streets with <em>all streets in the city at all times of day</em>: 100 = among the
       lowest-risk, 0 = among the highest.
+      <span className="mt-1.5 block font-semibold text-amber-200">
+        Night scores are lower because night is riskier citywide. Compare routes with each other instead, e.g. "−67%
+        risk vs Fastest".
+      </span>
       <span className="mt-1.5 block text-white/80">
         It is relative, not a guarantee: past data can't predict any single walk.
       </span>

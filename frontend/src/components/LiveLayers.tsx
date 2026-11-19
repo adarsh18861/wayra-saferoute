@@ -2,8 +2,8 @@ import L from "leaflet";
 import { useEffect, useMemo, useRef } from "react";
 import { CircleMarker, Marker, Polyline, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import type { IncidentReport, RouteSegment } from "../lib/api";
-import { LEVEL_COLOR } from "../lib/risk";
 import { REPORT_LABEL } from "./ReportIncident";
+import { CasedRoute } from "./RouteLayer";
 
 /** Pulsing location dot. `tone` = teal (normal), amber (off route) or red (SOS). */
 function dotIcon(tone: "teal" | "amber" | "red", label?: string): L.DivIcon {
@@ -58,20 +58,7 @@ function runs(segments: RouteSegment[]): Run[] {
 /** The trip's planned route: risk-coloured when the segments are known, otherwise brand purple. */
 export function TripRouteLayer({ geometry, segments }: { geometry: [number, number][]; segments?: RouteSegment[] | null }) {
   const r = useMemo(() => (segments ? runs(segments) : null), [segments]);
-  return (
-    <>
-      <Polyline positions={geometry} pathOptions={{ color: "#ffffff", weight: 11, opacity: 0.95 }} interactive={false} />
-      <Polyline positions={geometry} pathOptions={{ color: "#3b1f6b", weight: 9, opacity: r ? 0.35 : 0.85 }} interactive={false} />
-      {r?.map((run, i) => (
-        <Polyline
-          key={i}
-          positions={run.coords}
-          pathOptions={{ color: LEVEL_COLOR[run.level], weight: 6, opacity: 1, lineCap: "round", lineJoin: "round" }}
-          interactive={false}
-        />
-      ))}
-    </>
-  );
+  return <CasedRoute geometry={geometry} runs={r} />;
 }
 
 /** Where the person has actually walked (dotted). */

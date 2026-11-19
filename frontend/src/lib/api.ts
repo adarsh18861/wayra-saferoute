@@ -103,7 +103,8 @@ export function inChicago(lat: number, lon: number): boolean {
 // ---- Routing ----
 export type RouteProfile = "fastest" | "balanced" | "safest";
 export type RiskLevel = "green" | "amber" | "red";
-export type RouteSegment = { coords: [number, number][]; rel_risk: number; length_m: number; level: RiskLevel };
+/** One street edge. `name` = OSM street name or a label like "Footpath" (absent with an old graph cache). */
+export type RouteSegment = { coords: [number, number][]; rel_risk: number; length_m: number; level: RiskLevel; name?: string };
 export type RouteOption = {
   profile: RouteProfile;
   label: string;
@@ -200,7 +201,7 @@ export type FriendlyError = { title: string; text: string };
 export function friendlyError(err: unknown, what: "route" | "heatmap" | "model card"): FriendlyError {
   if (err instanceof ApiError) {
     if (err.status === 0) {
-      return { title: "Can't reach WAYRA", text: "The server isn't responding. Check your connection, or make sure the backend is running (npm run dev)." };
+      return { title: "Can't reach WAYRA", text: "The server isn't responding. Check your connection, or make sure the server is running (npm run demo or npm run dev)." };
     }
     if (err.status === 401) {
       return { title: "Session expired", text: "Please log out and sign in again." };

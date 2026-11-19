@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import type { RouteOption, RouteProfile, RouteResponse } from "../lib/api";
 import { LEVEL_COLOR, LEVEL_LABEL, SCORE_BADGE, scoreLevel } from "../lib/risk";
+import { compareToFastest } from "../lib/routeStats";
 
 export const PROFILE_ORDER: RouteProfile[] = ["safest", "balanced", "fastest"];
 
@@ -58,14 +59,12 @@ export default function RouteCompare({ result, selected, onSelect }: Props) {
       {routes.map((r, i) => {
         const active = r.profile === selected;
         const lvl = scoreLevel(r.safety_score);
+        const cmp = compareToFastest(r, result);
         let note: string;
         if (r.profile === "fastest") note = "Quickest";
         else if (fastest && r.identical_to.includes("fastest")) note = "Same as Fastest";
-        else if (fastest) {
-          const dMin = Math.round(r.eta_min - fastest.eta_min);
-          const dScore = r.safety_score - fastest.safety_score;
-          note = `${signed(dMin, " min")}, ${signed(dScore, " safety")}`;
-        } else note = "";
+        else if (fastest) note = `${signed(Math.round(r.eta_min - fastest.eta_min), " min")} vs Fastest`;
+        else note = "";
         return (
           <button
             key={r.profile}
@@ -94,7 +93,7 @@ export default function RouteCompare({ result, selected, onSelect }: Props) {
               <span
                 className={`flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full px-1 text-sm font-bold text-white ${SCORE_BADGE[lvl]}`}
                 aria-label={`Safety score ${r.safety_score} out of 100`}
-                title="Safety score (0–100, higher is safer)"
+                title="Safety score (0–100, higher is safer; relative to all Chicago streets at all hours, so night scores are lower)"
               >
                 {r.safety_score}
               </span>
@@ -106,9 +105,15 @@ export default function RouteCompare({ result, selected, onSelect }: Props) {
               <span className="font-semibold text-ink">{Math.round(r.eta_min)} min</span> <span className="whitespace-nowrap">· {km(r.distance_m)}</span>
             </span>
             <RiskBar route={r} />
-            <span className="text-[11px] leading-tight text-ink-soft">
-              {note}
-            </span>
+            {cmp && (
+              <span
+                className={`text-xs font-bold leading-tight ${cmp.better ? "text-emerald-700" : "text-amber-800"}`}
+                title={cmp.ratioText ?? cmp.pctText}
+              >
+                {cmp.short}
+              </span>
+            )}
+            <span className="text-[11px] leading-tight text-ink-soft">{note}</span>
           </button>
         );
       })}

@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     data_dir: Path = REPO_ROOT / "data"
     metrics_path: Path = REPO_ROOT / "ml" / "reports" / "metrics.json"
     load_routing_data: bool = True
+    # `npm run demo`: the backend also serves the production frontend build (PWA) on the same port.
+    serve_frontend: bool = False
+    frontend_dist: Path = REPO_ROOT / "frontend" / "dist"
     # Public URL of the web app, used in links sent to contacts (watch / track pages).
     public_base_url: str = "http://localhost:5173"
     # Optional notifiers: switched on only when these are set (see services/notifier.py).

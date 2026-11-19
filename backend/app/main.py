@@ -1,13 +1,17 @@
 import logging
+import sys
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app.core.config import settings
 from app.core.db import init_db
+from app.core.startup_check import format_checklist, run_checks
 from app.routers import auth, contacts, geocode, health, public_live, reports, routing, sos, trips, ws
 from app.services.live_service import LiveService
 from app.services.risk_service import RiskService
@@ -44,6 +48,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
     if settings.load_routing_data:
         load_routing_data(app)
+    checks = run_checks(app)
+    print(format_checklist(checks), file=sys.stderr, flush=True)
+    if not all(c.ok for c in checks):
+        logger.warning("Startup check: %s not ready", ", ".join(c.label for c in checks if not c.ok))
     yield
 
 
@@ -68,3 +76,28 @@ app.include_router(geocode.router, prefix="/api")
 app.include_router(routing.router, prefix="/api")
 for r in (contacts.router, trips.router, sos.router, reports.router, public_live.router, ws.router):
     app.include_router(r, prefix="/api")
+
+
+# ---------------------------------------------------------------- production frontend (npm run demo)
+# Registered after the API routers so /api/* always wins. Real files are served from frontend/dist;
+# every other path gets index.html (client-side routes such as /app or /watch/:token).
+NO_CACHE = {"index.html", "sw.js", "registerSW.js", "manifest.webmanifest"}
+
+
+def _serve_frontend(path: str) -> FileResponse:
+    dist = settings.frontend_dist.resolve()
+    if path.startswith("api/") or path == "api":
+        raise HTTPException(status_code=404, detail="Not Found")
+    target = (dist / path).resolve() if path else dist / "index.html"
+    if not target.is_file() or not target.is_relative_to(dist):
+        target = dist / "index.html"
+    if not target.is_file():
+        raise HTTPException(status_code=503, detail="Frontend build missing: run `npm run demo`")
+    name = Path(target).name
+    headers = {"Cache-Control": "no-cache"} if name in NO_CACHE else (
+        {"Cache-Control": "public, max-age=31536000, immutable"} if "/assets/" in target.as_posix() else {})
+    return FileResponse(target, headers=headers)
+
+
+if settings.serve_frontend:
+    app.add_api_route("/{path:path}", _serve_frontend, methods=["GET", "HEAD"], include_in_schema=False)

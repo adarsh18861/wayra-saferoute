@@ -20,7 +20,8 @@
   ranked jointly over all edges and all 12 buckets, so night buckets are relatively riskier.
   The routing API and the map colours use this; the raw probability stays in edge_risk.npy.
 - Graph files for the backend (no graphml parsing at API startup):
-  data/graph/walk_edges.parquet (u, v, key, length, lit_tag, lit_known, highway, lat, lon),
+  data/graph/walk_edges.parquet (u, v, key, length, lit_tag, lit_known, highway, name, lat, lon;
+  name = first OSM street name, "" if none: the backend uses it for turn-by-turn directions),
   data/graph/walk_nodes.parquet (osmid, lat, lon), data/graph/walk_geom.npz (offsets, coords).
 
 Usage: python ml/05_score_edges.py [--force-download]
@@ -28,6 +29,7 @@ Usage: python ml/05_score_edges.py [--force-download]
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import time
 from typing import Any
@@ -41,10 +43,10 @@ from sklearn.neighbors import BallTree
 from common import CACHE_DIR, DATA_DIR, PROCESSED_DIR, RAW_DIR, load_config
 
 GRAPH_PATH = DATA_DIR / "graph" / "chicago_walk.graphml"
-EDGES_CACHE = DATA_DIR / "graph" / "walk_edges.parquet"  # u, v, key, length, lit_tag, lit_known, highway, lat, lon
+EDGES_CACHE = DATA_DIR / "graph" / "walk_edges.parquet"  # u, v, key, length, lit_tag, lit_known, highway, name, lat, lon
 NODES_CACHE = DATA_DIR / "graph" / "walk_nodes.parquet"  # osmid, lat, lon
 GEOM_CACHE = DATA_DIR / "graph" / "walk_geom.npz"  # offsets (E+1), coords (N, 2) lat/lon per edge, u -> v
-EDGE_CACHE_COLS = {"u", "v", "key", "length", "lit_tag", "lit_known", "highway", "lat", "lon"}
+EDGE_CACHE_COLS = {"u", "v", "key", "length", "lit_tag", "lit_known", "highway", "name", "lat", "lon"}
 EARTH_R_M = 6_371_000.0
 LIT_YES = {"yes", "24/7", "automatic", "limited", "interval", "sunset-sunrise", "dusk-dawn"}
 LIT_ROAD_CLASSES = {"trunk", "primary", "secondary", "tertiary",
@@ -77,6 +79,17 @@ def tag_values(value: Any) -> list[str]:
         parts = (p.strip(" '\"") for p in s.strip("[]").split(","))
         return [p.lower() for p in parts if p]
     return [s.lower()]
+
+
+def first_tag_value(value: Any) -> str:
+    """First value of an osmnx tag ("Main St" or a merged-edge list "['Main St', 'Oak Ave']"), "" if none."""
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if text.startswith("[") and text.endswith("]"):
+        m = re.search(r"""['"](.+?)['"]""", text)
+        return m.group(1).strip() if m else ""
+    return text
 
 
 def is_lit(value: Any) -> bool:
@@ -119,6 +132,7 @@ def parse_graphml(path) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray, np.ndar
     elen: list[float] = []
     elit: list[str] = []
     ehw: list[str] = []
+    ename: list[str] = []
     offsets = [0]
     coords: list[tuple[float, float]] = []
     for _, el in ET.iterparse(str(path), events=("end",)):
@@ -142,6 +156,7 @@ def parse_graphml(path) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray, np.ndar
             elen.append(float(d.get("length") or 0.0))
             elit.append(d.get("lit") or "")
             ehw.append(d.get("highway") or "")
+            ename.append(first_tag_value(d.get("name")))
             pu, pv = node_pos[u], node_pos[v]
             a, b = (node_lat[pu], node_lon[pu]), (node_lat[pv], node_lon[pv])
             pts = _parse_linestring(d["geometry"]) if d.get("geometry") else [a, b]
@@ -161,6 +176,7 @@ def parse_graphml(path) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray, np.ndar
     e["lit_tag"] = [is_lit(x) for x in elit]
     e["lit_known"] = [bool(tag_values(x)) for x in elit]
     e["highway"] = ehw
+    e["name"] = ename
     e["lat"] = (lat_of.reindex(e["u"]).to_numpy() + lat_of.reindex(e["v"]).to_numpy()) / 2
     e["lon"] = (lon_of.reindex(e["u"]).to_numpy() + lon_of.reindex(e["v"]).to_numpy()) / 2
     return e, nodes, np.array(offsets, np.int64), np.array(coords, np.float64)

@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
+from pyarrow.lib import ArrowInvalid
 from scipy.spatial import cKDTree
 
 logger = logging.getLogger("wayra.router")
@@ -37,6 +38,58 @@ MAX_SNAP_M = 1500.0
 GREEN_MAX, AMBER_MAX = 0.33, 0.66
 M_PER_DEG_LAT = 111_320.0
 EPS_COST = 1e-3  # keeps zero-length edges as real edges in the sparse matrix
+
+
+# Label for unnamed OSM ways in the directions list, by highway class (first value of merged edges).
+UNNAMED_LABELS = {
+    "footway": "Footpath", "pedestrian": "Pedestrian walkway", "path": "Path", "steps": "Steps",
+    "service": "Service road / alley", "cycleway": "Cycle path", "track": "Track", "corridor": "Indoor corridor",
+    "living_street": "Living street", "residential": "Residential street",
+}
+
+
+def street_label(name: str, highway: str) -> str:
+    """OSM name, or a friendly label from the road class for unnamed ways."""
+    if name:
+        return name
+    hw = highway.strip("[]").split(",")[0].strip(" '\"") if highway else ""
+    return UNNAMED_LABELS.get(hw, "Unnamed path")
+
+
+SIDEWALK_MATCH_M = 25.0
+NAME_SAMPLE_M = 10.0
+
+
+def label_edges(name: np.ndarray, highway: np.ndarray, lat_u: np.ndarray, lon_u: np.ndarray,
+                lat_v: np.ndarray, lon_v: np.ndarray) -> np.ndarray:
+    """Directions label per edge (inputs are per edge: OSM name, highway, end-node coordinates).
+
+    Chicago's sidewalks and crossings are separate unnamed OSM footways (~80 % of walk edges), so an
+    unnamed edge takes the name of the closest named street: named edges are sampled every
+    NAME_SAMPLE_M along the straight u-v line, and the unnamed edge's midpoint takes the nearest
+    sample within SIDEWALK_MATCH_M (a sidewalk runs beside its street). Still unnamed → a road-class
+    label such as "Footpath".
+    """
+    name = name.astype(object).copy()
+    named = np.flatnonzero(name != "")
+    unnamed = np.flatnonzero(name == "")
+    if len(named) and len(unnamed):
+        kx = M_PER_DEG_LAT * math.cos(math.radians(float(np.mean(lat_u))))
+        ax, ay = lat_u[named] * M_PER_DEG_LAT, lon_u[named] * kx
+        bx, by = lat_v[named] * M_PER_DEG_LAT, lon_v[named] * kx
+        n = np.maximum(1, np.ceil(np.hypot(bx - ax, by - ay) / NAME_SAMPLE_M).astype(np.int64))
+        owner = np.repeat(np.arange(len(named)), n + 1)
+        step = np.arange(len(owner)) - np.repeat(np.cumsum(n + 1) - (n + 1), n + 1)
+        t = step / np.repeat(n, n + 1)
+        pts = np.c_[ax[owner] + t * (bx - ax)[owner], ay[owner] + t * (by - ay)[owner]]
+        mid = np.c_[(lat_u[unnamed] + lat_v[unnamed]) / 2 * M_PER_DEG_LAT, (lon_u[unnamed] + lon_v[unnamed]) / 2 * kx]
+        d, i = cKDTree(pts).query(mid, distance_upper_bound=SIDEWALK_MATCH_M)
+        hit = np.isfinite(d)
+        name[unnamed[hit]] = name[named[owner[i[hit]]]]
+    # Factorize so ~1M labels share a few thousand Python strings.
+    codes, uniques = pd.factorize(pd.MultiIndex.from_arrays([name, highway]))
+    labels = np.array([street_label(n, h) for n, h in uniques], dtype=object)
+    return labels[codes]
 
 
 class RoutingError(Exception):
@@ -84,7 +137,8 @@ class RouteResult:
 class RouterEngine:
     def __init__(self, node_lat: np.ndarray, node_lon: np.ndarray, eu: np.ndarray, ev: np.ndarray,
                  length: np.ndarray, rel_risk: np.ndarray, unlit: np.ndarray | None = None,
-                 geom_offsets: np.ndarray | None = None, geom_coords: np.ndarray | None = None) -> None:
+                 geom_offsets: np.ndarray | None = None, geom_coords: np.ndarray | None = None,
+                 names: np.ndarray | None = None) -> None:
         self.node_lat = np.asarray(node_lat, np.float64)
         self.node_lon = np.asarray(node_lon, np.float64)
         self.eu = np.asarray(eu, np.int64)
@@ -94,6 +148,8 @@ class RouterEngine:
         self.unlit = np.zeros(len(self.eu), bool) if unlit is None else np.asarray(unlit, bool)
         self.geom_offsets = geom_offsets
         self.geom_coords = geom_coords
+        # Street name per edge (directions list); None when the graph cache predates names.
+        self.names = names if names is not None and len(names) == len(self.eu) else None
         self.lat0 = float(np.mean(self.node_lat))
         self.kx = M_PER_DEG_LAT * math.cos(math.radians(self.lat0))
         self.tree = cKDTree(np.c_[self.node_lat * M_PER_DEG_LAT, self.node_lon * self.kx])
@@ -143,7 +199,41 @@ class RouterEngine:
             if len(g["offsets"]) == len(e) + 1:
                 offsets, coords = g["offsets"], g["coords"]
         return cls(nodes["lat"].to_numpy(), nodes["lon"].to_numpy(), eu, ev, e["length"].to_numpy(),
-                   rel, e["unlit"].to_numpy(), offsets, coords)
+                   rel, e["unlit"].to_numpy(), offsets, coords, cls._load_names(data_dir, len(e), nodes["lat"].to_numpy(), nodes["lon"].to_numpy(), eu, ev))
+
+    @staticmethod
+    def _load_names(data_dir: Path, n_edges: int, node_lat: np.ndarray, node_lon: np.ndarray,
+                    eu: np.ndarray, ev: np.ndarray) -> np.ndarray | None:
+        """Street labels from walk_edges.parquet (same row order as edge_index.parquet), if it has names."""
+        path = data_dir / "graph" / "walk_edges.parquet"
+        if not path.exists():
+            return None
+        try:
+            w = pd.read_parquet(path, columns=["name", "highway"])  # fast; only the matching is slow
+        except (KeyError, ValueError, ArrowInvalid):
+            logger.warning("walk_edges.parquet has no street names; run `npm run score` for directions")
+            return None
+        if len(w) != n_edges:
+            return None
+        cache = data_dir / "graph" / "walk_labels.npz"
+        if cache.exists() and cache.stat().st_mtime >= path.stat().st_mtime:
+            c = np.load(cache)
+            if len(c["codes"]) == n_edges:
+                return c["labels"].astype(object)[c["codes"]]
+        t0 = time.perf_counter()
+        labels = label_edges(w["name"].fillna("").astype(str).to_numpy(), w["highway"].fillna("").astype(str).to_numpy(),
+                             node_lat[eu], node_lon[eu], node_lat[ev], node_lon[ev])
+        try:  # cache: the sidewalk matching takes ~8 s on the full city
+            cat = pd.Categorical(labels)
+            np.savez(cache, codes=cat.codes, labels=np.asarray(cat.categories, dtype=str))
+        except OSError as exc:
+            logger.warning("Couldn't cache street labels: %s", exc)
+        logger.info("Street names for directions ready in %.1fs (cached to %s)", time.perf_counter() - t0, cache.name)
+        return labels
+
+    @property
+    def has_names(self) -> bool:
+        return self.names is not None
 
     # ------------------------------------------------------------ helpers
     def snap(self, lat: float, lon: float) -> tuple[int, float]:
@@ -208,7 +298,10 @@ class RouterEngine:
             geometry.extend(pts if not geometry else pts[1:])
             lvl = risk_level(r)
             risk_m[lvl] += L
-            segments.append({"coords": pts, "rel_risk": round(r, 3), "length_m": round(L, 1), "level": lvl})
+            seg = {"coords": pts, "rel_risk": round(r, 3), "length_m": round(L, 1), "level": lvl}
+            if self.names is not None:
+                seg["name"] = str(self.names[e])
+            segments.append(seg)
         dist = float(lengths.sum())
         return RouteResult(profile, label, lam, edges, geometry, round(dist, 1),
                            round(dist / WALK_SPEED_M_PER_MIN, 1), safety_score(lengths, rel),

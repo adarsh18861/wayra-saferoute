@@ -72,7 +72,8 @@ export type SOSState = {
   position: Position | null;
 };
 export type DemoSpeed = 1 | 5 | 20;
-export type DemoState = { on: boolean; speed: DemoSpeed; deviating: boolean; stopped: boolean };
+/** `autoReason`: why WAYRA switched to demo by itself (outside Chicago, permission denied, no fix); shown in the trip panel. */
+export type DemoState = { on: boolean; speed: DemoSpeed; deviating: boolean; stopped: boolean; autoReason?: string | null };
 export type FakeCallPhase = "idle" | "scheduled" | "ringing" | "incall";
 export type FakeCallState = { phase: FakeCallPhase; caller: string; ringAt: number | null; answeredAt: number | null };
 export type TripProgress = { remainingM: number; etaMin: number; offRouteM: number; onRoute: boolean; done: number };
@@ -328,7 +329,7 @@ export function SafetyProvider({ children }: { children: ReactNode }) {
         // Presenting outside Chicago? The route is in Chicago, so a real fix would be "off route".
         if (first && tripRef.current && !inChicago(fix.lat, fix.lng)) {
           first = false;
-          void switchToDemo("You're outside the Chicago pilot area, so WAYRA switched to DEMO MODE: a simulated walker follows your route.");
+          void switchToDemo("You're outside the Chicago pilot area, so a simulated walker follows your route. Your contacts still follow the trip live.");
           return;
         }
         first = false;
@@ -339,7 +340,11 @@ export function SafetyProvider({ children }: { children: ReactNode }) {
         setLocationError(denied ? "Location permission is off." : "Can't get your location right now.");
         if (tripRef.current && first) {
           first = false;
-          void switchToDemo(`${denied ? "Location permission is off" : "No GPS fix"}, so WAYRA switched to DEMO MODE (simulated walker).`);
+          void switchToDemo(
+            denied
+              ? "Location permission is off, so a simulated walker follows your route. To use real GPS, allow location in the address bar."
+              : "No GPS fix yet, so a simulated walker follows your route.",
+          );
         }
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 20_000 },
@@ -460,7 +465,7 @@ export function SafetyProvider({ children }: { children: ReactNode }) {
       setCheck(null);
       setSaferRoute(null);
       dismissedKey.current = null;
-      setDemo((d) => ({ ...d, on: demoOn, deviating: false, stopped: false }));
+      setDemo((d) => ({ ...d, on: demoOn, deviating: false, stopped: false, autoReason: null }));
       const n = contacts?.length ?? 0;
       notify(
         n
@@ -504,8 +509,8 @@ export function SafetyProvider({ children }: { children: ReactNode }) {
         offsetRef.current = 0;
         setTripDemo(t.id, true).then(setTrip).catch(() => {});
       }
-      setDemo((d) => ({ ...d, on: true }));
-      if (reason) notify({ tone: "info", title: "DEMO MODE on", text: reason, ttl: 9000 });
+      setDemo((d) => ({ ...d, on: true, autoReason: reason ?? null }));
+      if (reason) notify({ tone: "warn", title: "Switched to DEMO MODE", text: reason, ttl: 15_000 });
     },
     [notify],
   );
@@ -513,7 +518,7 @@ export function SafetyProvider({ children }: { children: ReactNode }) {
     async (on: boolean) => {
       if (on) return switchToDemo();
       const t = tripRef.current;
-      setDemo((d) => ({ ...d, on: false, deviating: false, stopped: false }));
+      setDemo((d) => ({ ...d, on: false, deviating: false, stopped: false, autoReason: null }));
       offsetRef.current = 0;
       if (t) setTripDemo(t.id, false).then(setTrip).catch(() => {});
     },

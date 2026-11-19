@@ -23,6 +23,7 @@ class Segment(BaseModel):
     rel_risk: float
     length_m: float
     level: Literal["green", "amber", "red"]
+    name: str | None = None  # OSM street name (or a label like "Footpath"); None without name data
 
 
 class RiskMetres(BaseModel):

@@ -1,12 +1,15 @@
-import { ChevronDown, CircleAlert, Clock, Footprints, LocateFixed, Moon, Navigation, Pencil } from "lucide-react";
+import { ChevronDown, ChevronsLeft, ChevronsUp, CircleAlert, Clock, LocateFixed, Moon, Navigation, Pencil } from "lucide-react";
 import { forwardRef, useEffect, useState } from "react";
 import { inChicago, type FriendlyError, type Place, type RouteProfile, type RouteResponse } from "../lib/api";
 import { LEVEL_LABEL } from "../lib/risk";
+import { compareToFastest } from "../lib/routeStats";
 import { chicagoLocalInput, departLabel } from "../lib/time";
 import DemoChips, { type DemoTrip } from "./DemoChips";
+import Directions from "./Directions";
 import NightModeBadge from "./NightModeBadge";
 import PlaceInput from "./PlaceInput";
 import RouteCompare, { km } from "./RouteCompare";
+import StartTripBar from "./StartTripBar";
 
 export type NightSetting = "auto" | "on" | "off";
 
@@ -29,54 +32,24 @@ type Props = {
   selected: RouteProfile;
   onSelect: (p: RouteProfile) => void;
   onStartTrip: (demo: boolean) => Promise<void>;
+  onFocusStreet: (coords: [number, number][], index: number) => void;
+  focusedStreet: number | null;
+  onCollapse: () => void;
 };
 
-/** "Start trip" on the selected route, with the DEMO MODE choice (simulated walker). */
-function StartTrip({ label, onStart }: { label: string; onStart: (demo: boolean) => Promise<void> }) {
-  const [demo, setDemo] = useState(() => {
-    try {
-      return localStorage.getItem("wayra.demoDefault") !== "0";
-    } catch {
-      return true;
-    }
-  });
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+/** Hide-panel button (the map gets the full width). */
+function CollapseButton({ onClick }: { onClick: () => void }) {
   return (
-    <div className="rounded-2xl bg-brand-teal/8 p-3 ring-1 ring-brand-teal/25">
-      <button
-        type="button"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          setErr(null);
-          try {
-            localStorage.setItem("wayra.demoDefault", demo ? "1" : "0");
-          } catch {
-            /* ignore */
-          }
-          try {
-            await onStart(demo);
-          } catch (e) {
-            setErr(e instanceof Error ? e.message : "Couldn't start the trip.");
-          } finally {
-            setBusy(false);
-          }
-        }}
-        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-teal font-semibold text-brand-950 shadow-[var(--shadow-glow)] transition hover:-translate-y-px hover:bg-brand-teal-light active:translate-y-0 disabled:opacity-60"
-      >
-        <Footprints className="h-5 w-5" aria-hidden />
-        {busy ? "Starting…" : `Start trip on ${label}`}
-      </button>
-      <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs text-ink-soft">
-        <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand-700" />
-        <span>
-          <span className="font-semibold text-ink">Demo mode</span>: a simulated walker follows the route (for presenting away from
-          Chicago). Turn off to use your real GPS.
-        </span>
-      </label>
-      {err && <p className="mt-2 text-xs text-red-700">{err}</p>}
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Hide panel"
+      title="Hide panel (full-width map)"
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-soft ring-1 ring-line transition hover:bg-brand-50 hover:text-brand-800"
+    >
+      <ChevronsUp className="h-4 w-4 sm:hidden" aria-hidden />
+      <ChevronsLeft className="hidden h-4 w-4 sm:block" aria-hidden />
+    </button>
   );
 }
 
@@ -118,17 +91,17 @@ function isSmallScreen(): boolean {
 /** Floating panel: From/To, departure time, night-safe control, demo chips, and the route results. */
 const SearchPanel = forwardRef<HTMLDivElement, Props>(function SearchPanel(props, ref) {
   const { from, to, onFromChange, onToChange, departAt, onDepartAt, nightSetting, onNightSetting, nightActive, sunsetText } = props;
-  const { routing, error, onSearch, onDemo, result, selected, onSelect, onStartTrip } = props;
+  const { routing, error, onSearch, onDemo, result, selected, onSelect, onStartTrip, onFocusStreet, focusedStreet, onCollapse } = props;
   const [locating, setLocating] = useState(false);
   const [geoMsg, setGeoMsg] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(true);
   const [resultsOpen, setResultsOpen] = useState(true);
 
-  // On phones, fold the form away once routes arrive so the map stays visible.
+  // Fold the form into a one-line summary once routes arrive, so the cards and directions get the room.
   useEffect(() => {
     if (result) {
       setResultsOpen(true);
-      if (isSmallScreen()) setFormOpen(false);
+      setFormOpen(false);
     }
   }, [result]);
 
@@ -171,8 +144,13 @@ const SearchPanel = forwardRef<HTMLDivElement, Props>(function SearchPanel(props
     >
       {/* ---------------- search form ---------------- */}
       {formOpen ? (
+        <>
+        <div className="flex shrink-0 items-center justify-between gap-2 px-3.5 pt-3">
+          <h2 className="font-display text-base font-semibold text-brand-800">Plan a safe walk</h2>
+          <CollapseButton onClick={onCollapse} />
+        </div>
         <form
-          className="shrink-0 space-y-3 p-3.5"
+          className="shrink-0 space-y-3 p-3.5 pt-2"
           onSubmit={(e) => {
             e.preventDefault();
             onSearch();
@@ -262,6 +240,7 @@ const SearchPanel = forwardRef<HTMLDivElement, Props>(function SearchPanel(props
             </p>
           )}
         </form>
+        </>
       ) : (
         <div className="flex shrink-0 items-center gap-2 border-b border-line px-3.5 py-3">
           <div className="min-w-0 flex-1 text-sm">
@@ -281,6 +260,7 @@ const SearchPanel = forwardRef<HTMLDivElement, Props>(function SearchPanel(props
             <Pencil className="h-3.5 w-3.5" aria-hidden />
             Edit
           </button>
+          <CollapseButton onClick={onCollapse} />
         </div>
       )}
 
@@ -329,19 +309,8 @@ const SearchPanel = forwardRef<HTMLDivElement, Props>(function SearchPanel(props
           {resultsOpen && (
             <div className="min-h-0 space-y-2.5 overflow-y-auto px-3.5 pb-3.5">
               <RouteCompare result={result} selected={selected} onSelect={onSelect} />
-              {sel && <StartTrip label={sel.label} onStart={onStartTrip} />}
-              {sel && (
-                <p className="text-xs text-ink-soft">
-                  <span className="font-semibold text-ink">{sel.label}:</span>{" "}
-                  {(["green", "amber", "red"] as const)
-                    .map((l) => {
-                      const tot = sel.risk_m.green + sel.risk_m.amber + sel.risk_m.red || 1;
-                      return `${Math.round((100 * sel.risk_m[l]) / tot)}% ${LEVEL_LABEL[l].toLowerCase()}`;
-                    })
-                    .join(" · ")}
-                  {sel.identical_to.length > 0 && ` · same path as ${sel.identical_to.join(" & ")}`}
-                </p>
-              )}
+              {sel && <SelectedSummary result={result} profile={selected} />}
+              {sel && <Directions route={sel} onFocus={onFocusStreet} focused={focusedStreet} defaultOpen={!isSmallScreen()} />}
               <p className="text-[11px] leading-snug text-ink-soft">
                 {result.night_mode ? "Night-safe routing (extra weight on risk and unlit streets)" : "Daytime routing"}
                 {result.night_mode_source === "override" ? " · set manually" : " · auto"} · lighting and crowd levels are
@@ -351,8 +320,46 @@ const SearchPanel = forwardRef<HTMLDivElement, Props>(function SearchPanel(props
           )}
         </section>
       )}
+      {!routing && result && sel && <StartTripBar label={sel.label} onStart={onStartTrip} />}
     </div>
   );
 });
+
+/** One-line summary of the selected route: risk vs Fastest, time, and the colour split. */
+function SelectedSummary({ result, profile }: { result: RouteResponse; profile: RouteProfile }) {
+  const sel = result.routes.find((r) => r.profile === profile);
+  const fastest = result.routes.find((r) => r.profile === "fastest");
+  if (!sel) return null;
+  const cmp = compareToFastest(sel, result);
+  const tot = sel.risk_m.green + sel.risk_m.amber + sel.risk_m.red || 1;
+  const dMin = fastest ? Math.round(sel.eta_min - fastest.eta_min) : 0;
+  return (
+    <div className="rounded-2xl bg-brand-50/70 px-3 py-2.5 text-xs text-ink-soft ring-1 ring-brand-100">
+      <p className="text-sm text-ink">
+        <span className="font-semibold">{sel.label}</span> · {Math.round(sel.eta_min)} min · {km(sel.distance_m)}
+      </p>
+      {cmp ? (
+        <p className={`mt-0.5 text-sm font-bold ${cmp.better ? "text-emerald-700" : "text-amber-800"}`}>
+          {cmp.ratioText ? `${cmp.ratioText} (${cmp.pctText.replace(" vs Fastest", "")})` : cmp.pctText}
+          <span className="font-medium text-ink-soft">
+            {" "}
+            · {dMin > 0 ? `+${dMin} min` : dMin < 0 ? `${dMin} min` : "same time"}
+          </span>
+        </p>
+      ) : (
+        <p className="mt-0.5 font-semibold text-ink">
+          {sel.profile === "fastest" ? "The quickest way, not weighted for safety." : "Same path as Fastest at this time."}
+        </p>
+      )}
+      <p className="mt-1">
+        {(["green", "amber", "red"] as const).map((l) => `${Math.round((100 * sel.risk_m[l]) / tot)}% ${LEVEL_LABEL[l].toLowerCase()}`).join(" · ")}
+        {sel.identical_to.length > 0 && ` · same path as ${sel.identical_to.join(" & ")}`}
+      </p>
+      <p className="mt-1 text-[11px]">
+        Safety score {sel.safety_score}/100 is relative to all Chicago streets at all hours{result.night_mode ? "; night scores are lower because night is riskier citywide" : ""}.
+      </p>
+    </div>
+  );
+}
 
 export default SearchPanel;
